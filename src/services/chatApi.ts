@@ -1,4 +1,5 @@
 import { API_URLS } from '@/lib/url';
+import { getStoredToken } from '@/lib/authStorage';
 
 export interface ChatModel {
   id: string;
@@ -21,10 +22,12 @@ export const fetchChatResponse = async ({
   message: string;
   overridePII?: string;
 }): Promise<string> => {
+  const token = getStoredToken();
   const response = await fetch(API_URLS.chat.send, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({
       modelId,
@@ -49,10 +52,12 @@ export const fetchChatResponse = async ({
 };
 
 export const fetchChatModels = async (): Promise<ChatModel[]> => {
+  const token = getStoredToken();
   const response = await fetch(API_URLS.chat.models, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
 

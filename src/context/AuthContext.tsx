@@ -1,77 +1,105 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { API_URLS } from '@/lib/url';
+import { clearAuthState, loadAuthState, persistAuthState } from '@/lib/authStorage';
+
+interface AuthUser {
+  email: string;
+  role?: string;
+}
 
 interface AuthContextValue {
   isAuthenticated: boolean;
-  user: { email: string } | null;
+  user: AuthUser | null;
   loading: boolean;
+  token: string | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
-const STORAGE_KEY = 'kotwal_auth_state';
-
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+const fetchUserRole = async (token: string): Promise<string | null> => {
+  try {
+    const response = await fetch(API_URLS.user.role, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      console.error('Failed to fetch user role', errorBody);
+      return null;
+    }
+
+    const data = (await response.json().catch(() => null)) as { role?: string } | null;
+    return data?.role ?? null;
+  } catch (error) {
+    console.error('Failed to fetch user role', error);
+    return null;
+  }
+};
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<{ email: string } | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as { isAuthenticated: boolean; email?: string };
-        setIsAuthenticated(!!parsed.isAuthenticated);
-        setUser(parsed.email ? { email: parsed.email } : null);
-      }
-    } catch (error) {
-      console.error('Failed to read auth state', error);
-    } finally {
-      setLoading(false);
+    const stored = loadAuthState();
+    if (stored) {
+      setIsAuthenticated(!!stored.isAuthenticated);
+      setUser(stored.email ? { email: stored.email, role: stored.role } : null);
+      setToken(stored.token ?? null);
     }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
     if (loading) return;
-    try {
-      if (isAuthenticated && user) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ isAuthenticated: true, email: user.email }));
-      } else {
-        localStorage.removeItem(STORAGE_KEY);
-      }
-    } catch (error) {
-      console.error('Failed to persist auth state', error);
+    if (isAuthenticated && user && token) {
+      persistAuthState({ isAuthenticated: true, email: user.email, role: user.role, token });
+    } else {
+      clearAuthState();
     }
-  }, [isAuthenticated, user, loading]);
+  }, [isAuthenticated, user, token, loading]);
 
   const login = async (email: string, password: string) => {
     if (!email || !password) {
       throw new Error('Email and password are required.');
     }
 
-    try {
-      const response = await fetch(API_URLS.auth.login, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
+    const response = await fetch(API_URLS.auth.login, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
 
-      if (!response.ok) {
-        throw new Error('API request failed');
-      }
-    } catch (error) {
-      console.warn('Auth API unreachable, bypassing login for testing', error);
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      throw new Error(errorBody?.message || 'API request failed');
     }
 
+    const data = (await response.json().catch(() => null)) as { token?: string } | null;
+    if (!data?.token) {
+      throw new Error('Login API did not return a token.');
+    }
+
+    const userRole = await fetchUserRole(data.token);
+
     setIsAuthenticated(true);
-    setUser({ email });
+    setUser({ email, role: userRole ?? undefined });
+    setToken(data.token);
   };
 
   const logout = () => {
     setIsAuthenticated(false);
     setUser(null);
+    setToken(null);
+    clearAuthState();
   };
 
   const value = useMemo(
@@ -79,10 +107,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       isAuthenticated,
       user,
       loading,
+      token,
       login,
       logout,
     }),
-    [isAuthenticated, user, loading],
+    [isAuthenticated, user, loading, token],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,10 +1,17 @@
+const BASE_URL = 'https://kotwal.onrender.com';
+
+const withBase = (path: string) => `${BASE_URL}${path}`;
+
 export const API_URLS = {
   auth: {
-    login: '/api/auth/login',
+    login: withBase('/api/auth/login'),
   },
   chat: {
-    models: '/api/chat-models',
-    send: '/api/chat',
+    models: withBase('/api/chat-models'),
+    send: withBase('/api/chat'),
+  },
+  user: {
+    role: withBase('/user/role'),
   },
 };
 
