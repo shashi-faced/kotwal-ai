@@ -1,5 +1,5 @@
 import { Conversation } from '@/types/chat';
-import { Plus, MessageSquare, Menu, X } from 'lucide-react';
+import { Plus, MessageSquare, Menu, X, LayoutDashboard } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface SidebarProps {
@@ -9,6 +9,8 @@ interface SidebarProps {
   onNewChat: () => void;
   isOpen: boolean;
   onToggle: () => void;
+  onOpenDashboard: () => void;
+  userEmail?: string | null;
 }
 
 const Sidebar = ({
@@ -18,7 +20,11 @@ const Sidebar = ({
   onNewChat,
   isOpen,
   onToggle,
+  onOpenDashboard,
+  userEmail,
 }: SidebarProps) => {
+  const userLabel = userEmail || 'User';
+  const initials = userLabel.charAt(0).toUpperCase();
   return (
     <>
       {/* Mobile Toggle Button */}
@@ -80,10 +86,20 @@ const Sidebar = ({
         <div className="p-3 border-t border-sidebar-border">
           <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-sidebar-foreground">
             <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-medium">
-              U
+              {initials}
             </div>
-            <span className="truncate">User</span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium truncate">{userLabel}</p>
+              <p className="text-xs text-muted-foreground truncate">Secure session</p>
+            </div>
           </div>
+          <button
+            onClick={onOpenDashboard}
+            className="mt-3 w-full flex items-center justify-between px-3 py-2 rounded-lg border border-sidebar-border text-sm text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+          >
+            <span>Open Dashboard</span>
+            <LayoutDashboard className="w-4 h-4" />
+          </button>
         </div>
       </aside>
     </>

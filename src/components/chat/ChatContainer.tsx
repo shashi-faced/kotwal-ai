@@ -6,6 +6,8 @@ import WelcomeScreen from './WelcomeScreen';
 import Sidebar from './Sidebar';
 import { fetchChatModels, fetchChatResponse, ChatModel } from '@/services/chatApi';
 import { toast } from '@/components/ui/use-toast';
+import { useAuth } from '@/context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const FALLBACK_MODELS: { value: string; label: string }[] = [
   { value: 'fallback-mini', label: 'Kotwal Mini · Fast' },
@@ -22,6 +24,8 @@ const ChatContainer = () => {
   const [modelsLoading, setModelsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState(FALLBACK_MODELS[0].value);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuth();
+  const navigate = useNavigate();
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
 
@@ -164,6 +168,11 @@ const ChatContainer = () => {
         onNewChat={handleNewChat}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
+        onOpenDashboard={() => {
+          setSidebarOpen(false);
+          navigate('/dashboard');
+        }}
+        userEmail={user?.email}
       />
 
       <main className="flex-1 flex flex-col min-w-0">
