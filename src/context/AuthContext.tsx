@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { API_URLS } from '@/lib/url';
 import { clearAuthState, loadAuthState, persistAuthState } from '@/lib/authStorage';
+import { handleUnauthorized } from '@/lib/session';
 
 interface AuthUser {
   email: string;
@@ -27,6 +28,11 @@ const fetchUserRole = async (token: string): Promise<string | null> => {
         Authorization: `Bearer ${token}`,
       },
     });
+
+    if (response.status === 401) {
+      handleUnauthorized();
+      return null;
+    }
 
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({}));
@@ -77,6 +83,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
+
+    if (response.status === 401) {
+      handleUnauthorized();
+      return;
+    }
 
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({}));

@@ -1,4 +1,5 @@
 import { API_URLS } from '@/lib/url';
+import { handleUnauthorized } from '@/lib/session';
 import { getStoredToken } from '@/lib/authStorage';
 
 export interface ChatModel {
@@ -36,6 +37,11 @@ export const fetchChatResponse = async ({
     }),
   });
 
+  if (response.status === 401) {
+    handleUnauthorized();
+    return '';
+  }
+
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
     throw new Error(errorBody?.message || 'Failed to get chat response');
@@ -60,6 +66,11 @@ export const fetchChatModels = async (): Promise<ChatModel[]> => {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
+
+  if (response.status === 401) {
+    handleUnauthorized();
+    return [];
+  }
 
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
