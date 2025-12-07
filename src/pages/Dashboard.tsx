@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import DashboardSidebar, { DashboardSection } from '@/components/dashboard/Sidebar';
 import ManageUsersSection from '@/components/dashboard/sections/ManageUsersSection';
 import AddUserSection from '@/components/dashboard/sections/AddUserSection';
@@ -6,6 +7,7 @@ import EditUserSection from '@/components/dashboard/sections/EditUserSection';
 import ChatModelsSection from '@/components/dashboard/sections/ChatModelsSection';
 import BillingSection from '@/components/dashboard/sections/BillingSection';
 import SecuritySection from '@/components/dashboard/sections/SecuritySection';
+import { Button } from '@/components/ui/button';
 
 const sectionMeta: Record<
   DashboardSection,
@@ -53,15 +55,21 @@ const Dashboard = () => {
   const [activeSection, setActiveSection] = useState<DashboardSection>('manage-users');
   const header = sectionMeta[activeSection];
   const ActiveSection = SECTION_COMPONENTS[activeSection];
+  const navigate = useNavigate();
 
   return (
     <div className="flex h-screen bg-background text-foreground">
       <DashboardSidebar activeSection={activeSection} onSelect={setActiveSection} />
       <section className="flex-1 overflow-y-auto px-10 py-8">
-        <header className="mb-8">
-          <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Kotwal Dashboard</p>
-          <h1 className="text-3xl font-semibold mt-2">{header.title}</h1>
-          <p className="text-muted-foreground mt-2 max-w-2xl">{header.description}</p>
+        <header className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Kotwal Dashboard</p>
+            <h1 className="text-3xl font-semibold mt-2">{header.title}</h1>
+            <p className="text-muted-foreground mt-2 max-w-2xl">{header.description}</p>
+          </div>
+          <Button variant="outline" className="rounded-2xl border-muted/60" onClick={() => navigate('/')}>
+            ← Back to Chat
+          </Button>
         </header>
         <ActiveSection />
       </section>
