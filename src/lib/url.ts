@@ -11,7 +11,7 @@ export const API_URLS = {
     send: withBase('/api/chat'),
   },
   user: {
-    role: withBase('/user/role'),
+    role: withBase('/api/auth/user/role'),
   },
 };
 

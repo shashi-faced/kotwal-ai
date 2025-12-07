@@ -14,16 +14,17 @@ interface ChatCompletionResponse {
   content?: string;
 }
 
-export const fetchChatResponse = async ({
-  modelId,
-  message,
-  overridePII = '',
-}: {
+type FetchChatResponseArgs = {
   modelId: string;
   message: string;
   overridePII?: string;
-}): Promise<string> => {
-  const token = getStoredToken();
+};
+
+export const fetchChatResponse = async (
+  { modelId, message, overridePII = '' }: FetchChatResponseArgs,
+  authToken?: string,
+): Promise<string> => {
+  const token = authToken ?? getStoredToken();
   const response = await fetch(API_URLS.chat.send, {
     method: 'POST',
     headers: {
@@ -57,8 +58,8 @@ export const fetchChatResponse = async ({
   return assistantMessage;
 };
 
-export const fetchChatModels = async (): Promise<ChatModel[]> => {
-  const token = getStoredToken();
+export const fetchChatModels = async (authToken?: string): Promise<ChatModel[]> => {
+  const token = authToken ?? getStoredToken();
   const response = await fetch(API_URLS.chat.models, {
     method: 'GET',
     headers: {

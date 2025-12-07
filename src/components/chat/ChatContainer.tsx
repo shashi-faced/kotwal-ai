@@ -24,7 +24,7 @@ const ChatContainer = () => {
   const [modelsLoading, setModelsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState(FALLBACK_MODELS[0].value);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const navigate = useNavigate();
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
@@ -38,12 +38,13 @@ const ChatContainer = () => {
   }, [activeConversation?.messages, scrollToBottom]);
 
   useEffect(() => {
+    if (!token) return;
     let isMounted = true;
 
     const loadModels = async () => {
       setModelsLoading(true);
       try {
-        const models = await fetchChatModels();
+        const models = await fetchChatModels(token);
         if (!isMounted || !models.length) return;
 
         const options = models.map((model: ChatModel) => ({
@@ -71,7 +72,7 @@ const ChatContainer = () => {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [token]);
 
   const createNewConversation = (firstMessage: string): string => {
     const id = Date.now().toString();
@@ -115,10 +116,13 @@ const ChatContainer = () => {
     let assistantContent = '';
 
     try {
-      assistantContent = await fetchChatResponse({
-        modelId: selectedModel,
-        message: content,
-      });
+      assistantContent = await fetchChatResponse(
+        {
+          modelId: selectedModel,
+          message: content,
+        },
+        token,
+      );
     } catch (error) {
       console.error('Failed to fetch chat response', error);
       assistantContent =
