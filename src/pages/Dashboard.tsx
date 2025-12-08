@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardSidebar, { DashboardSection } from '@/components/dashboard/Sidebar';
+import OverviewSection from '@/components/dashboard/sections/OverviewSection';
 import ManageUsersSection from '@/components/dashboard/sections/ManageUsersSection';
 import AddUserSection from '@/components/dashboard/sections/AddUserSection';
 import EditUserSection from '@/components/dashboard/sections/EditUserSection';
@@ -16,6 +17,10 @@ const sectionMeta: Record<
     description: string;
   }
 > = {
+  overview: {
+    title: 'Dashboard Overview',
+    description: 'Stay on top of usage, alerts, and suggested next steps.',
+  },
   'manage-users': {
     title: 'Manage Users',
     description: 'Track active operators, their roles, and session health.',
@@ -43,6 +48,7 @@ const sectionMeta: Record<
 };
 
 const SECTION_COMPONENTS: Record<DashboardSection, () => JSX.Element> = {
+  overview: OverviewSection,
   'manage-users': ManageUsersSection,
   'add-user': AddUserSection,
   'edit-user': EditUserSection,
@@ -52,7 +58,7 @@ const SECTION_COMPONENTS: Record<DashboardSection, () => JSX.Element> = {
 };
 
 const Dashboard = () => {
-  const [activeSection, setActiveSection] = useState<DashboardSection>('manage-users');
+  const [activeSection, setActiveSection] = useState<DashboardSection>('overview');
   const header = sectionMeta[activeSection];
   const ActiveSection = SECTION_COMPONENTS[activeSection];
   const navigate = useNavigate();

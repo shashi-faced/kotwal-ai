@@ -2,6 +2,7 @@ import { cn } from '@/lib/utils';
 import { LayoutDashboard, Users, UserPlus, Pencil, Bot, CreditCard, ShieldCheck } from 'lucide-react';
 
 export type DashboardSection =
+  | 'overview'
   | 'manage-users'
   | 'add-user'
   | 'edit-user'
@@ -23,6 +24,7 @@ interface NavItem {
 
 const DashboardSidebar = ({ activeSection, onSelect }: DashboardSidebarProps) => {
   const mainNav: NavItem[] = [
+    { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'manage-users', label: 'Manage Users', icon: Users },
     { id: 'add-user', label: 'Add New User', icon: UserPlus, isSub: true },
     { id: 'edit-user', label: 'Edit User', icon: Pencil, isSub: true },

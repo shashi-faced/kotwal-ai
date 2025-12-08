@@ -13,6 +13,11 @@ export const API_URLS = {
   user: {
     role: withBase('/api/auth/user/role'),
   },
+  billing: {
+    records: withBase('/api/billing'),
+    aggregate: withBase('/api/billing/aggregate'),
+    aggregateMonthly: withBase('/api/billing/aggregate-monthly'),
+  },
 };
 
 export type ApiUrlKey = keyof typeof API_URLS;
