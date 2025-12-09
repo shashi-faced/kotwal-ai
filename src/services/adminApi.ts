@@ -19,6 +19,14 @@ export interface CreateUserResponse {
   message: string;
 }
 
+export interface AdminUserDetails {
+  name: string;
+  email: string;
+  role: string;
+  status?: string;
+  permissions?: string[];
+}
+
 interface ApiErrorBody {
   message?: string;
 }
@@ -79,4 +87,29 @@ export const createAdminUser = async (
   return {
     message: (data as CreateUserResponse).message ?? 'User created successfully.',
   };
+};
+
+export const fetchAdminUserByEmail = async (
+  email: string,
+  authToken?: string
+): Promise<AdminUserDetails> => {
+  const token = authToken ?? getStoredToken();
+
+  const response = await fetch(`${API_URLS.admin.userDetails}/${encodeURIComponent(email)}`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  });
+
+  if (response.status === 401) {
+    handleUnauthorized();
+    throw new Error('Session expired. Please log in again.');
+  }
+
+  if (!response.ok) {
+    const errorBody = (await response.json().catch(() => ({}))) as ApiErrorBody | Record<string, never>;
+    throw new Error(parseErrorMessage(errorBody, 'User not found.'));
+  }
+
+  const data = (await response.json()) as AdminUserDetails;
+  return data;
 };
