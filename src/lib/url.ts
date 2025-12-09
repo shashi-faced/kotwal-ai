@@ -15,6 +15,7 @@ export const API_URLS = {
   },
   admin: {
     licenseInfo: withBase('/api/auth/admin/license-info'),
+    createUser: withBase('/api/auth/create-user'),
   },
   billing: {
     records: withBase('/api/billing'),
