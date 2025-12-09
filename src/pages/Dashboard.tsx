@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardSidebar, { DashboardSection } from '@/components/dashboard/Sidebar';
 import OverviewSection from '@/components/dashboard/sections/OverviewSection';
@@ -9,6 +9,7 @@ import ChatModelsSection from '@/components/dashboard/sections/ChatModelsSection
 import BillingSection from '@/components/dashboard/sections/BillingSection';
 import SecuritySection from '@/components/dashboard/sections/SecuritySection';
 import { Button } from '@/components/ui/button';
+import { fetchLicenseInfo, LicenseInfo } from '@/services/adminApi';
 
 const sectionMeta: Record<
   DashboardSection,
@@ -47,21 +48,61 @@ const sectionMeta: Record<
   },
 };
 
-const SECTION_COMPONENTS: Record<DashboardSection, () => JSX.Element> = {
-  overview: OverviewSection,
-  'manage-users': ManageUsersSection,
-  'add-user': AddUserSection,
-  'edit-user': EditUserSection,
-  'chat-models': ChatModelsSection,
-  billing: BillingSection,
-  security: SecuritySection,
-};
-
 const Dashboard = () => {
   const [activeSection, setActiveSection] = useState<DashboardSection>('overview');
   const header = sectionMeta[activeSection];
-  const ActiveSection = SECTION_COMPONENTS[activeSection];
   const navigate = useNavigate();
+  const [licenseInfo, setLicenseInfo] = useState<LicenseInfo | null>(null);
+  const [loadingLicenseInfo, setLoadingLicenseInfo] = useState(false);
+  const [licenseError, setLicenseError] = useState<string | null>(null);
+
+  const loadLicenseInfo = useCallback(async () => {
+    setLoadingLicenseInfo(true);
+    setLicenseError(null);
+    try {
+      const data = await fetchLicenseInfo();
+      setLicenseInfo(data);
+    } catch (error) {
+      console.error('Failed to fetch license info', error);
+      setLicenseError('Unable to load license information.');
+    } finally {
+      setLoadingLicenseInfo(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeSection === 'add-user') {
+      void loadLicenseInfo();
+    }
+  }, [activeSection, loadLicenseInfo]);
+
+  const renderActiveSection = () => {
+    switch (activeSection) {
+      case 'overview':
+        return <OverviewSection />;
+      case 'manage-users':
+        return <ManageUsersSection />;
+      case 'add-user':
+        return (
+          <AddUserSection
+            licenseInfo={licenseInfo}
+            loadingLicenseInfo={loadingLicenseInfo}
+            licenseError={licenseError}
+            onRetry={loadLicenseInfo}
+          />
+        );
+      case 'edit-user':
+        return <EditUserSection />;
+      case 'chat-models':
+        return <ChatModelsSection />;
+      case 'billing':
+        return <BillingSection />;
+      case 'security':
+        return <SecuritySection />;
+      default:
+        return <OverviewSection />;
+    }
+  };
 
   return (
     <div className="flex h-screen bg-background text-foreground">
@@ -77,7 +118,7 @@ const Dashboard = () => {
             ← Back to Chat
           </Button>
         </header>
-        <ActiveSection />
+        {renderActiveSection()}
       </section>
     </div>
   );

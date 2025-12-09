@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { fetchLicenseInfo, LicenseInfo } from '@/services/adminApi';
+import { LicenseInfo } from '@/services/adminApi';
 
-const AddUserSection = () => {
-  const [licenseInfo, setLicenseInfo] = useState<LicenseInfo | null>(null);
-  const [loadingLicenseInfo, setLoadingLicenseInfo] = useState(false);
-  const [licenseError, setLicenseError] = useState<string | null>(null);
+interface AddUserSectionProps {
+  licenseInfo: LicenseInfo | null;
+  loadingLicenseInfo: boolean;
+  licenseError: string | null;
+  onRetry: () => void;
+}
 
+const AddUserSection = ({ licenseInfo, loadingLicenseInfo, licenseError, onRetry }: AddUserSectionProps) => {
   const roles = [
     {
       name: 'Observer',
@@ -24,36 +26,9 @@ const AddUserSection = () => {
     },
   ];
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadLicenseInfo = async () => {
-      setLoadingLicenseInfo(true);
-      setLicenseError(null);
-
-      try {
-        const data = await fetchLicenseInfo();
-        if (isMounted) {
-          setLicenseInfo(data);
-        }
-      } catch (error) {
-        console.error('Failed to fetch license info', error);
-        if (isMounted) {
-          setLicenseError('Unable to load license information.');
-        }
-      } finally {
-        if (isMounted) {
-          setLoadingLicenseInfo(false);
-        }
-      }
-    };
-
-    loadLicenseInfo();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const handleRetry = () => {
+    onRetry();
+  };
 
   return (
     <Card className="max-w-3xl bg-card/80">
@@ -83,7 +58,14 @@ const AddUserSection = () => {
           </div>
         </div>
 
-        {licenseError && <p className="text-xs text-destructive">{licenseError}</p>}
+        {licenseError && (
+          <div className="flex items-center gap-3 text-xs text-destructive">
+            <span>{licenseError}</span>
+            <Button variant="outline" size="sm" className="rounded-xl px-3 py-1" onClick={handleRetry}>
+              Retry
+            </Button>
+          </div>
+        )}
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
