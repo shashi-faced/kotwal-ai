@@ -1,5 +1,5 @@
 import { Conversation } from '@/types/chat';
-import { Plus, MessageSquare, Menu, X, LayoutDashboard } from 'lucide-react';
+import { Plus, MessageSquare, Menu, X, LayoutDashboard, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface SidebarProps {
@@ -11,6 +11,7 @@ interface SidebarProps {
   onToggle: () => void;
   onOpenDashboard: () => void;
   userEmail?: string | null;
+  onLogout: () => void;
 }
 
 const Sidebar = ({
@@ -22,6 +23,7 @@ const Sidebar = ({
   onToggle,
   onOpenDashboard,
   userEmail,
+  onLogout,
 }: SidebarProps) => {
   const userLabel = userEmail || 'User';
   const initials = userLabel.charAt(0).toUpperCase();
@@ -99,6 +101,13 @@ const Sidebar = ({
           >
             <span>Open Dashboard</span>
             <LayoutDashboard className="w-4 h-4" />
+          </button>
+          <button
+            onClick={onLogout}
+            className="mt-3 w-full flex items-center justify-between px-3 py-2 rounded-lg border border-destructive/40 text-sm text-destructive hover:bg-destructive/10 transition-colors"
+          >
+            <span>Logout</span>
+            <LogOut className="w-4 h-4" />
           </button>
         </div>
       </aside>
