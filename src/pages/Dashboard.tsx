@@ -50,6 +50,7 @@ const sectionMeta: Record<
 
 const Dashboard = () => {
   const [activeSection, setActiveSection] = useState<DashboardSection>('overview');
+  const [editUserEmail, setEditUserEmail] = useState<string | null>(null);
   const header = sectionMeta[activeSection];
   const navigate = useNavigate();
   const [licenseInfo, setLicenseInfo] = useState<LicenseInfo | null>(null);
@@ -81,7 +82,17 @@ const Dashboard = () => {
       case 'overview':
         return <OverviewSection />;
       case 'manage-users':
-        return <ManageUsersSection />;
+        return (
+          <ManageUsersSection
+            onEditUser={(email) => {
+              setEditUserEmail(email);
+              setActiveSection('edit-user');
+            }}
+            onAddUser={() => {
+              setActiveSection('add-user');
+            }}
+          />
+        );
       case 'add-user':
         return (
           <AddUserSection
@@ -92,7 +103,7 @@ const Dashboard = () => {
           />
         );
       case 'edit-user':
-        return <EditUserSection />;
+        return <EditUserSection initialEmail={editUserEmail ?? undefined} />;
       case 'chat-models':
         return <ChatModelsSection />;
       case 'billing':

@@ -18,6 +18,11 @@ export const API_URLS = {
     createUser: withBase('/api/auth/create-user'),
     userDetails: withBase('/api/auth/admin/user'),
   },
+  dashboard: {
+    users: withBase('/api/dashboard/users'),
+    summary: withBase('/api/dashboard/summary'),
+    alerts: withBase('/api/dashboard/alerts'),
+  },
   billing: {
     records: withBase('/api/billing'),
     aggregate: withBase('/api/billing/aggregate'),

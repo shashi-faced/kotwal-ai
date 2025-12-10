@@ -12,7 +12,11 @@ import {
 } from '@/services/adminApi';
 import { showErrorToast, showSuccessToast } from '@/lib/toast';
 
-const EditUserSection = () => {
+interface EditUserSectionProps {
+  initialEmail?: string;
+}
+
+const EditUserSection = ({ initialEmail }: EditUserSectionProps) => {
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<AdminUserDetails | null>(null);
@@ -28,6 +32,8 @@ const EditUserSection = () => {
     status: '',
     permissions: '',
   });
+
+  const [initialLoaded, setInitialLoaded] = useState(false);
 
   const validateEmail = (value: string) => {
     if (!value) {
@@ -65,6 +71,35 @@ const EditUserSection = () => {
       setLoadingUser(false);
     }
   };
+
+  useEffect(() => {
+    if (!initialEmail || initialLoaded) return;
+
+    const trimmedEmail = initialEmail.trim();
+    if (!trimmedEmail) return;
+
+    setFetchError(null);
+    setSelectedUser(null);
+    setLoadingUser(true);
+    setIsEditing(false);
+    setUpdateError(null);
+    setUpdateSuccess(null);
+
+    const loadInitial = async () => {
+      try {
+        const user = await fetchAdminUserByEmail(trimmedEmail);
+        setSelectedUser(user);
+        setEmail(trimmedEmail);
+      } catch (error) {
+        setFetchError(error instanceof Error ? error.message : 'Unable to fetch user details.');
+      } finally {
+        setLoadingUser(false);
+        setInitialLoaded(true);
+      }
+    };
+
+    void loadInitial();
+  }, [initialEmail, initialLoaded]);
 
   useEffect(() => {
     if (selectedUser && !isEditing) {
@@ -233,7 +268,7 @@ const EditUserSection = () => {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
+                  {/* <div className="space-y-2">
                     <label className="text-sm text-muted-foreground">Permissions</label>
                     <Textarea
                       value={editForm.permissions}
@@ -243,7 +278,7 @@ const EditUserSection = () => {
                       className="min-h-[120px]"
                     />
                     <p className="text-xs text-muted-foreground">Separate permissions with commas or new lines.</p>
-                  </div>
+                  </div> */}
 
                   {updateError && <p className="text-sm text-destructive">{updateError}</p>}
                   {updateSuccess && <p className="text-sm text-emerald-500">{updateSuccess}</p>}
