@@ -27,6 +27,18 @@ export interface AdminUserDetails {
   permissions?: string[];
 }
 
+export interface UpdateAdminUserPayload {
+  email: string;
+  name?: string;
+  role?: 'admin' | 'user';
+  status?: string;
+  permissions?: string[];
+}
+
+export interface UpdateAdminUserResponse {
+  message: string;
+}
+
 interface ApiErrorBody {
   message?: string;
 }
@@ -112,4 +124,32 @@ export const fetchAdminUserByEmail = async (
 
   const data = (await response.json()) as AdminUserDetails;
   return data;
+};
+
+export const updateAdminUser = async (
+  payload: UpdateAdminUserPayload,
+  authToken?: string
+): Promise<UpdateAdminUserResponse> => {
+  const token = authToken ?? getStoredToken();
+
+  const response = await fetch(API_URLS.admin.userDetails, {
+    method: 'PUT',
+    headers: buildHeaders(token),
+    body: JSON.stringify(payload),
+  });
+
+  if (response.status === 401) {
+    handleUnauthorized();
+    throw new Error('Session expired. Please log in again.');
+  }
+
+  if (!response.ok) {
+    const errorBody = (await response.json().catch(() => ({}))) as ApiErrorBody | Record<string, never>;
+    throw new Error(parseErrorMessage(errorBody, 'Failed to update user'));
+  }
+
+  const data = (await response.json().catch(() => ({}))) as UpdateAdminUserResponse | Record<string, never>;
+  return {
+    message: (data as UpdateAdminUserResponse).message ?? 'User updated successfully.',
+  };
 };
