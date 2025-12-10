@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, ReactNode } fr
 import { API_URLS } from '@/lib/url';
 import { clearAuthState, loadAuthState, persistAuthState } from '@/lib/authStorage';
 import { handleUnauthorized } from '@/lib/session';
+import { showErrorToast, showSuccessToast } from '@/lib/toast';
 
 interface AuthUser {
   email: string;
@@ -36,7 +37,9 @@ const fetchUserRole = async (token: string): Promise<string | null> => {
 
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({}));
+      const message = errorBody?.message || 'Failed to fetch user role';
       console.error('Failed to fetch user role', errorBody);
+      showErrorToast('Unable to fetch role', message);
       return null;
     }
 
@@ -44,6 +47,8 @@ const fetchUserRole = async (token: string): Promise<string | null> => {
     return data?.role ?? null;
   } catch (error) {
     console.error('Failed to fetch user role', error);
+    const description = error instanceof Error ? error.message : 'Unable to fetch user role.';
+    showErrorToast('Unable to fetch role', description);
     return null;
   }
 };
@@ -78,32 +83,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       throw new Error('Email and password are required.');
     }
 
-    const response = await fetch(API_URLS.auth.login, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
+    try {
+      const response = await fetch(API_URLS.auth.login, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
 
-    if (response.status === 401) {
-      handleUnauthorized();
-      return;
+      if (response.status === 401) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody?.message || 'Invalid email or password.');
+      }
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody?.message || 'API request failed');
+      }
+
+      const data = (await response.json().catch(() => null)) as { token?: string } | null;
+      if (!data?.token) {
+        throw new Error('Login API did not return a token.');
+      }
+
+      const userRole = await fetchUserRole(data.token);
+
+      setIsAuthenticated(true);
+      setUser({ email, role: userRole ?? undefined });
+      setToken(data.token);
+    } catch (error) {
+      const description = error instanceof Error ? error.message : 'Unable to login. Please try again.';
+      showErrorToast('Login failed', description);
+      throw error instanceof Error ? error : new Error(description);
     }
-
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({}));
-      throw new Error(errorBody?.message || 'API request failed');
-    }
-
-    const data = (await response.json().catch(() => null)) as { token?: string } | null;
-    if (!data?.token) {
-      throw new Error('Login API did not return a token.');
-    }
-
-    const userRole = await fetchUserRole(data.token);
-
-    setIsAuthenticated(true);
-    setUser({ email, role: userRole ?? undefined });
-    setToken(data.token);
   };
 
   const logout = () => {
@@ -111,6 +122,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
     setToken(null);
     clearAuthState();
+    showSuccessToast('Logged out', 'You have been signed out of Kotwal.');
   };
 
   const value = useMemo(
