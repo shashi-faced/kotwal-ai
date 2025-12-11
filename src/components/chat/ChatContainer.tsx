@@ -24,7 +24,7 @@ const ChatContainer = () => {
   const [modelsLoading, setModelsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState(FALLBACK_MODELS[0].value);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { user, token } = useAuth();
+  const { user, token, logout } = useAuth();
   const navigate = useNavigate();
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
@@ -177,6 +177,11 @@ const ChatContainer = () => {
           navigate('/dashboard');
         }}
         userEmail={user?.email}
+        onLogout={() => {
+          setSidebarOpen(false);
+          logout();
+          navigate('/login');
+        }}
       />
 
       <main className="flex-1 flex flex-col min-w-0">
