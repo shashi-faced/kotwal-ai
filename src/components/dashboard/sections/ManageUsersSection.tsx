@@ -3,8 +3,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/context/AuthContext';
-import { DashboardUser, fetchDashboardUsers } from '@/services/adminApi';
-import { Pencil } from 'lucide-react';
+import { DashboardUser, deleteAdminUser, fetchDashboardUsers } from '@/services/adminApi';
+import { Pencil, Trash2 } from 'lucide-react';
+import { showErrorToast, showSuccessToast } from '@/lib/toast';
 
 interface ManageUsersSectionProps {
   onEditUser: (email: string) => void;
@@ -18,6 +19,7 @@ const ManageUsersSection = ({ onEditUser, onAddUser }: ManageUsersSectionProps) 
   const [users, setUsers] = useState<DashboardUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deletingEmail, setDeletingEmail] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -87,15 +89,48 @@ const ManageUsersSection = ({ onEditUser, onAddUser }: ManageUsersSectionProps) 
                   <TableCell>{formatDateTime(user.lastLogin)}</TableCell>
                   <TableCell>{formatDateTime(user.createdAt)}</TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onEditUser(user.email)}
-                      className="inline-flex items-center gap-2"
-                    >
-                      <Pencil className="w-4 h-4" />
-                      <span className="hidden sm:inline">Edit user</span>
-                    </Button>
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onEditUser(user.email)}
+                        className="inline-flex items-center gap-2"
+                      >
+                        <Pencil className="w-4 h-4" />
+                        <span className="hidden sm:inline">Edit</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={async () => {
+                          if (!token) return;
+                          const confirmed = window.confirm(
+                            'Are you sure you want to delete this user? This action cannot be undone.',
+                          );
+                          if (!confirmed) return;
+
+                          setDeletingEmail(user.email);
+                          try {
+                            const result = await deleteAdminUser(user.email, token);
+                            setUsers((prev) => prev.filter((u) => u.email !== user.email));
+                            showSuccessToast('User deleted', result.message);
+                          } catch (err) {
+                            console.error('Failed to delete user', err);
+                            const message =
+                              err instanceof Error ? err.message : 'Unable to delete user. Please try again.';
+                            setError(message);
+                            showErrorToast('Delete failed', message);
+                          } finally {
+                            setDeletingEmail(null);
+                          }
+                        }}
+                        disabled={deletingEmail === user.email}
+                        className="inline-flex items-center gap-2 text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span className="hidden sm:inline">Delete</span>
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))

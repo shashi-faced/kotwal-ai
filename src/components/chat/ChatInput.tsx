@@ -41,23 +41,7 @@ const ChatInput = ({ onSend, disabled, selectedModel, onChangeModel, modelOption
   return (
     <div className="p-4 pb-6">
       <div className="max-w-3xl mx-auto space-y-3">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
-          <div className="md:w-56 flex flex-col gap-1 md:flex-row md:items-center md:gap-2">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground md:mb-0">Model</p>
-            <Select value={selectedModel} onValueChange={onChangeModel} disabled={disabled}>
-              <SelectTrigger className="h-12 rounded-2xl border border-chat-input-border bg-chat-input px-4 text-sm shadow-sm md:w-full">
-                <SelectValue placeholder="Select model" />
-              </SelectTrigger>
-              <SelectContent>
-                {modelOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
+        <div className="flex flex-col gap-2">
           <div className="flex-1">
             <div className="relative bg-chat-input border border-chat-input-border rounded-2xl shadow-lg">
               <textarea
@@ -78,6 +62,24 @@ const ChatInput = ({ onSend, disabled, selectedModel, onChangeModel, modelOption
               >
                 <ArrowUp className="w-5 h-5" />
               </button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-start pt-1">
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Model</p>
+              <Select value={selectedModel} onValueChange={onChangeModel} disabled={disabled}>
+                <SelectTrigger className="h-8 rounded-lg border border-chat-input-border bg-chat-input px-2 text-xs shadow-sm w-40">
+                  <SelectValue placeholder="Select model" />
+                </SelectTrigger>
+                <SelectContent>
+                  {modelOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>

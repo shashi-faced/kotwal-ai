@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/context/AuthContext';
 import {
   DashboardSummary,
   DashboardAlertsResponse,
+  DashboardAlertsQuery,
   fetchDashboardSummary,
   fetchDashboardAlerts,
 } from '@/services/adminApi';
@@ -23,6 +26,13 @@ const OverviewSection = () => {
   const [alertsData, setAlertsData] = useState<DashboardAlertsResponse | null>(null);
   const [alertsLoading, setAlertsLoading] = useState(false);
   const [alertsError, setAlertsError] = useState<string | null>(null);
+  const [piiFilter, setPiiFilter] = useState<'all' | 'true' | 'false'>('all');
+  const [overrideFilter, setOverrideFilter] = useState<'all' | 'true' | 'false'>('all');
+  const [riskRange, setRiskRange] = useState<'all' | 'high' | 'medium' | 'low'>('all');
+  const [alertsSortPreset, setAlertsSortPreset] = useState<'created-desc' | 'created-asc' | 'score-desc' | 'score-asc'>(
+    'created-desc',
+  );
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     if (!token) return;
@@ -51,10 +61,50 @@ const OverviewSection = () => {
       setAlertsLoading(true);
       setAlertsError(null);
       try {
-        const data = await fetchDashboardAlerts(
-          { limit: 10, sortBy: 'createdAt', sortOrder: 'DESC' },
-          token
-        );
+        const query: DashboardAlertsQuery = {
+          limit: 10,
+        };
+
+        if (piiFilter === 'true') {
+          query.piiFlag = true;
+        } else if (piiFilter === 'false') {
+          query.piiFlag = false;
+        }
+
+        if (overrideFilter === 'true') {
+          query.override = true;
+        } else if (overrideFilter === 'false') {
+          query.override = false;
+        }
+
+        if (riskRange === 'high') {
+          query.riskScoreMin = 81;
+        } else if (riskRange === 'medium') {
+          query.riskScoreMin = 60;
+          query.riskScoreMax = 80;
+        } else if (riskRange === 'low') {
+          query.riskScoreMax = 59;
+        }
+
+        switch (alertsSortPreset) {
+          case 'created-asc':
+            query.sortBy = 'createdAt';
+            query.sortOrder = 'ASC';
+            break;
+          case 'score-desc':
+            query.sortBy = 'piiDetails.riskScore';
+            query.sortOrder = 'DESC';
+            break;
+          case 'score-asc':
+            query.sortBy = 'piiDetails.riskScore';
+            query.sortOrder = 'ASC';
+            break;
+          default:
+            query.sortBy = 'createdAt';
+            query.sortOrder = 'DESC';
+        }
+
+        const data = await fetchDashboardAlerts(query, token);
         setAlertsData(data);
       } catch (err) {
         console.error('Failed to fetch dashboard alerts', err);
@@ -65,7 +115,23 @@ const OverviewSection = () => {
     };
 
     void loadAlerts();
-  }, [token]);
+  }, [token, piiFilter, overrideFilter, riskRange, alertsSortPreset]);
+
+  const filteredAlerts =
+    alertsData?.alerts?.filter((alert) => {
+      if (!searchTerm.trim()) return true;
+      const q = searchTerm.trim().toLowerCase();
+      const name = alert.userName || '';
+      const email = alert.userEmail || '';
+      const category = alert.riskCategory || '';
+      const message = alert.message || '';
+      return (
+        name.toLowerCase().includes(q) ||
+        email.toLowerCase().includes(q) ||
+        category.toLowerCase().includes(q) ||
+        message.toLowerCase().includes(q)
+      );
+    }) ?? [];
 
   const stats = [
     {
@@ -222,11 +288,80 @@ const OverviewSection = () => {
             <CardDescription>Latest alerts from the last queries.</CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-wrap gap-2">
+                <Select
+                  value={piiFilter}
+                  onValueChange={(value) => setPiiFilter(value as 'all' | 'true' | 'false')}
+                >
+                  <SelectTrigger className="h-8 w-32 rounded-xl border-muted bg-background/60 text-xs">
+                    <SelectValue placeholder="PII filter" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">PII: All</SelectItem>
+                    <SelectItem value="true">PII: Yes</SelectItem>
+                    <SelectItem value="false">PII: No</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={overrideFilter}
+                  onValueChange={(value) => setOverrideFilter(value as 'all' | 'true' | 'false')}
+                >
+                  <SelectTrigger className="h-8 w-32 rounded-xl border-muted bg-background/60 text-xs">
+                    <SelectValue placeholder="Override filter" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Override: All</SelectItem>
+                    <SelectItem value="true">Override: Yes</SelectItem>
+                    <SelectItem value="false">Override: No</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={riskRange}
+                  onValueChange={(value) => setRiskRange(value as 'all' | 'high' | 'medium' | 'low')}
+                >
+                  <SelectTrigger className="h-8 w-40 rounded-xl border-muted bg-background/60 text-xs">
+                    <SelectValue placeholder="Risk range" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Risk: All</SelectItem>
+                    <SelectItem value="high">High (81+)</SelectItem>
+                    <SelectItem value="medium">Medium (60–80)</SelectItem>
+                    <SelectItem value="low">Low (≤59)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={alertsSortPreset}
+                  onValueChange={(value) =>
+                    setAlertsSortPreset(value as 'created-desc' | 'created-asc' | 'score-desc' | 'score-asc')
+                  }
+                >
+                  <SelectTrigger className="h-8 w-40 rounded-xl border-muted bg-background/60 text-xs">
+                    <SelectValue placeholder="Sort" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="created-desc">Newest first</SelectItem>
+                    <SelectItem value="created-asc">Oldest first</SelectItem>
+                    <SelectItem value="score-desc">Highest risk</SelectItem>
+                    <SelectItem value="score-asc">Lowest risk</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-full md:w-64">
+                <Input
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search user, email, or message"
+                  className="h-8 rounded-xl text-xs"
+                />
+              </div>
+            </div>
+
             {alertsLoading && <p className="text-sm text-muted-foreground">Loading alerts…</p>}
-            {!alertsLoading && !alertsError && alertsData && alertsData.alerts.length === 0 && (
-              <p className="text-sm text-muted-foreground">No alerts found.</p>
+            {!alertsLoading && !alertsError && alertsData && filteredAlerts.length === 0 && (
+              <p className="text-sm text-muted-foreground">No alerts found for current filters.</p>
             )}
-            {!alertsLoading && !alertsError && alertsData && alertsData.alerts.length > 0 && (
+            {!alertsLoading && !alertsError && alertsData && filteredAlerts.length > 0 && (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -240,10 +375,8 @@ const OverviewSection = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {alertsData.alerts.map((alert) => {
-                    const created = alert.createdAt
-                      ? new Date(alert.createdAt).toLocaleString()
-                      : '';
+                  {filteredAlerts.map((alert) => {
+                    const created = alert.createdAt ? new Date(alert.createdAt).toLocaleString() : '';
                     const score = alert.piiDetails?.riskScore ?? null;
                     const piiType = alert.piiDetails?.type ?? '';
                     return (

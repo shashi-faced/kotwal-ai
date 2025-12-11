@@ -107,6 +107,10 @@ export interface UpdateAdminUserResponse {
   message: string;
 }
 
+export interface DeleteAdminUserResponse {
+  message: string;
+}
+
 interface ApiErrorBody {
   message?: string;
 }
@@ -330,5 +334,32 @@ export const updateAdminUser = async (
   const data = (await response.json().catch(() => ({}))) as UpdateAdminUserResponse | Record<string, never>;
   return {
     message: (data as UpdateAdminUserResponse).message ?? 'User updated successfully.',
+  };
+};
+
+export const deleteAdminUser = async (
+  email: string,
+  authToken?: string
+): Promise<DeleteAdminUserResponse> => {
+  const token = authToken ?? getStoredToken();
+
+  const response = await fetch(`${API_URLS.admin.userDetails}/${encodeURIComponent(email)}`, {
+    method: 'DELETE',
+    headers: buildHeaders(token),
+  });
+
+  if (response.status === 401) {
+    handleUnauthorized();
+    throw new Error('Session expired. Please log in again.');
+  }
+
+  if (!response.ok) {
+    const errorBody = (await response.json().catch(() => ({}))) as ApiErrorBody | Record<string, never>;
+    throw new Error(parseErrorMessage(errorBody, 'Failed to delete user'));
+  }
+
+  const data = (await response.json().catch(() => ({}))) as DeleteAdminUserResponse | Record<string, never>;
+  return {
+    message: (data as DeleteAdminUserResponse).message ?? 'User deleted successfully.',
   };
 };
