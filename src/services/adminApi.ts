@@ -343,7 +343,7 @@ export const deleteAdminUser = async (
 ): Promise<DeleteAdminUserResponse> => {
   const token = authToken ?? getStoredToken();
 
-  const response = await fetch(`${API_URLS.admin.userDetails}/${encodeURIComponent(email)}`, {
+  const response = await fetch(`${API_URLS.dashboard.deleteUser}/${encodeURIComponent(email)}`, {
     method: 'DELETE',
     headers: buildHeaders(token),
   });

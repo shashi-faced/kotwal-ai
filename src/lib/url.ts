@@ -20,6 +20,7 @@ export const API_URLS = {
   },
   dashboard: {
     users: withBase('/api/dashboard/users'),
+    deleteUser: withBase('/api/dashboard/users'),
     summary: withBase('/api/dashboard/summary'),
     alerts: withBase('/api/dashboard/alerts'),
   },
