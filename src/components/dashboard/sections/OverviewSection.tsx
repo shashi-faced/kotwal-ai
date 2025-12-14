@@ -165,6 +165,7 @@ const OverviewSection = () => {
   return (
     <div className="space-y-6">
       {error && <p className="text-sm text-destructive">{error}</p>}
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
           <Card key={stat.label} className="bg-card/80">
@@ -199,203 +200,205 @@ const OverviewSection = () => {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="bg-card/80">
-          <CardHeader>
-            <CardTitle>Alerts breakdown</CardTitle>
-            <CardDescription>PII, overrides and risk level distribution.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {alertsError && <p className="text-sm text-destructive">{alertsError}</p>}
-            {!alertsError && (
-              <>
-                {(() => {
-                  const piiTrue = alertsData?.counts?.piiFlagCounts?.['true'] ?? 0;
-                  const piiFalse = alertsData?.counts?.piiFlagCounts?.['false'] ?? 0;
-                  const overrideTrue = alertsData?.counts?.overrideCount ?? 0;
-                  const overrideFalse = alertsData?.counts?.overrideCounts?.['false'] ?? 0;
-                  const high = alertsData?.counts?.highRisk ?? 0;
-                  const med = alertsData?.counts?.medRisk ?? 0;
-                  const low = alertsData?.counts?.lowRisk ?? 0;
-                  const maxValue = Math.max(high, med, low, overrideTrue, overrideFalse, piiTrue, piiFalse, 1);
+      <div className="space-y-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap gap-2">
+            <Select
+              value={piiFilter}
+              onValueChange={(value) => setPiiFilter(value as 'all' | 'true' | 'false')}
+            >
+              <SelectTrigger className="h-8 w-32 rounded-xl border-muted bg-background/60 text-xs">
+                <SelectValue placeholder="PII filter" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">PII: All</SelectItem>
+                <SelectItem value="true">PII: Yes</SelectItem>
+                <SelectItem value="false">PII: No</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={overrideFilter}
+              onValueChange={(value) => setOverrideFilter(value as 'all' | 'true' | 'false')}
+            >
+              <SelectTrigger className="h-8 w-32 rounded-xl border-muted bg-background/60 text-xs">
+                <SelectValue placeholder="Override filter" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Override: All</SelectItem>
+                <SelectItem value="true">Override: Yes</SelectItem>
+                <SelectItem value="false">Override: No</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={riskRange}
+              onValueChange={(value) => setRiskRange(value as 'all' | 'high' | 'medium' | 'low')}
+            >
+              <SelectTrigger className="h-8 w-40 rounded-xl border-muted bg-background/60 text-xs">
+                <SelectValue placeholder="Risk range" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Risk: All</SelectItem>
+                <SelectItem value="high">High (81+)</SelectItem>
+                <SelectItem value="medium">Medium (60–80)</SelectItem>
+                <SelectItem value="low">Low (≤59)</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={alertsSortPreset}
+              onValueChange={(value) =>
+                setAlertsSortPreset(value as 'created-desc' | 'created-asc' | 'score-desc' | 'score-asc')
+              }
+            >
+              <SelectTrigger className="h-8 w-40 rounded-xl border-muted bg-background/60 text-xs">
+                <SelectValue placeholder="Sort" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="created-desc">Newest first</SelectItem>
+                <SelectItem value="created-asc">Oldest first</SelectItem>
+                <SelectItem value="score-desc">Highest risk</SelectItem>
+                <SelectItem value="score-asc">Lowest risk</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-full md:w-64">
+            <Input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search user, email, or message"
+              className="h-8 rounded-xl text-xs"
+            />
+          </div>
+        </div>
 
-                  const barHeight = (value: number, max: number) =>
-                    max > 0 ? `${Math.round((value / max) * 100)}%` : '0%';
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card className="bg-card/80">
+            <CardHeader>
+              <CardTitle>Alerts breakdown</CardTitle>
+              <CardDescription>PII, overrides and risk level distribution.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {alertsError && <p className="text-sm text-destructive">{alertsError}</p>}
+              {!alertsError && (
+                <>
+                  {(() => {
+                    const piiTrue = alertsData?.counts?.piiFlagCounts?.['true'] ?? 0;
+                    const piiFalse = alertsData?.counts?.piiFlagCounts?.['false'] ?? 0;
+                    const overrideTrue = alertsData?.counts?.overrideCount ?? 0;
+                    const overrideFalse = alertsData?.counts?.overrideCounts?.['false'] ?? 0;
+                    const high = alertsData?.counts?.highRisk ?? 0;
+                    const med = alertsData?.counts?.medRisk ?? 0;
+                    const low = alertsData?.counts?.lowRisk ?? 0;
+                    const maxValue = Math.max(high, med, low, overrideTrue, overrideFalse, piiTrue, piiFalse, 1);
 
-                  const clusters = [
-                    {
-                      label: 'Risk level',
-                      bars: [
-                        { label: 'High', value: high, color: 'bg-red-500' },
-                        { label: 'Medium', value: med, color: 'bg-yellow-500' },
-                        { label: 'Low', value: low, color: 'bg-emerald-500' },
-                      ],
-                    },
-                    {
-                      label: 'Override count',
-                      bars: [
-                        { label: 'True', value: overrideTrue, color: 'bg-amber-500' },
-                        { label: 'False', value: overrideFalse, color: 'bg-muted-foreground' },
-                      ],
-                    },
-                    {
-                      label: 'PII flag count',
-                      bars: [
-                        { label: 'True', value: piiTrue, color: 'bg-primary' },
-                        { label: 'False', value: piiFalse, color: 'bg-muted-foreground' },
-                      ],
-                    },
-                  ];
+                    const barHeight = (value: number, max: number) =>
+                      max > 0 ? `${Math.round((value / max) * 100)}%` : '0%';
 
-                  return (
-                    <div className="space-y-4">
-                      <div className="flex h-40 items-end gap-6">
-                        {clusters.map((cluster) => (
-                          <div key={cluster.label} className="flex-1">
-                            <div className="flex h-32 items-end justify-center gap-3">
-                              {cluster.bars.map((bar) => (
-                                <div key={bar.label} className="flex flex-col items-center gap-1">
-                                  <div className="flex h-28 w-6 items-end rounded-full bg-muted overflow-hidden">
-                                    <div
-                                      className={`w-full ${bar.color}`}
-                                      style={{ height: barHeight(bar.value, maxValue) }}
-                                    />
-                                  </div>
-                                  <span className="text-[10px] leading-tight text-muted-foreground">
-                                    {bar.label}
-                                  </span>
-                                  <span className="text-xs font-medium">{bar.value}</span>
-                                </div>
-                              ))}
-                            </div>
-                            <p className="mt-2 text-xs text-center font-medium text-muted-foreground">
-                              {cluster.label}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
-              </>
-            )}
-          </CardContent>
-        </Card>
+                    const clusters = [
+                      {
+                        label: 'Risk level',
+                        bars: [
+                          { label: 'High', value: high, color: 'bg-red-500' },
+                          { label: 'Medium', value: med, color: 'bg-yellow-500' },
+                          { label: 'Low', value: low, color: 'bg-emerald-500' },
+                        ],
+                      },
+                      {
+                        label: 'Override count',
+                        bars: [
+                          { label: 'True', value: overrideTrue, color: 'bg-amber-500' },
+                          { label: 'False', value: overrideFalse, color: 'bg-muted-foreground' },
+                        ],
+                      },
+                      {
+                        label: 'PII flag count',
+                        bars: [
+                          { label: 'True', value: piiTrue, color: 'bg-primary' },
+                          { label: 'False', value: piiFalse, color: 'bg-muted-foreground' },
+                        ],
+                      },
+                    ];
 
-        <Card className="bg-card/80">
-          <CardHeader>
-            <CardTitle>Recent alerts</CardTitle>
-            <CardDescription>Latest alerts from the last queries.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="flex flex-wrap gap-2">
-                <Select
-                  value={piiFilter}
-                  onValueChange={(value) => setPiiFilter(value as 'all' | 'true' | 'false')}
-                >
-                  <SelectTrigger className="h-8 w-32 rounded-xl border-muted bg-background/60 text-xs">
-                    <SelectValue placeholder="PII filter" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">PII: All</SelectItem>
-                    <SelectItem value="true">PII: Yes</SelectItem>
-                    <SelectItem value="false">PII: No</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={overrideFilter}
-                  onValueChange={(value) => setOverrideFilter(value as 'all' | 'true' | 'false')}
-                >
-                  <SelectTrigger className="h-8 w-32 rounded-xl border-muted bg-background/60 text-xs">
-                    <SelectValue placeholder="Override filter" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Override: All</SelectItem>
-                    <SelectItem value="true">Override: Yes</SelectItem>
-                    <SelectItem value="false">Override: No</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={riskRange}
-                  onValueChange={(value) => setRiskRange(value as 'all' | 'high' | 'medium' | 'low')}
-                >
-                  <SelectTrigger className="h-8 w-40 rounded-xl border-muted bg-background/60 text-xs">
-                    <SelectValue placeholder="Risk range" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Risk: All</SelectItem>
-                    <SelectItem value="high">High (81+)</SelectItem>
-                    <SelectItem value="medium">Medium (60–80)</SelectItem>
-                    <SelectItem value="low">Low (≤59)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={alertsSortPreset}
-                  onValueChange={(value) =>
-                    setAlertsSortPreset(value as 'created-desc' | 'created-asc' | 'score-desc' | 'score-asc')
-                  }
-                >
-                  <SelectTrigger className="h-8 w-40 rounded-xl border-muted bg-background/60 text-xs">
-                    <SelectValue placeholder="Sort" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="created-desc">Newest first</SelectItem>
-                    <SelectItem value="created-asc">Oldest first</SelectItem>
-                    <SelectItem value="score-desc">Highest risk</SelectItem>
-                    <SelectItem value="score-asc">Lowest risk</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="w-full md:w-64">
-                <Input
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search user, email, or message"
-                  className="h-8 rounded-xl text-xs"
-                />
-              </div>
-            </div>
-
-            {alertsLoading && <p className="text-sm text-muted-foreground">Loading alerts…</p>}
-            {!alertsLoading && !alertsError && alertsData && filteredAlerts.length === 0 && (
-              <p className="text-sm text-muted-foreground">No alerts found for current filters.</p>
-            )}
-            {!alertsLoading && !alertsError && alertsData && filteredAlerts.length > 0 && (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Risk</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Score</TableHead>
-                    <TableHead>PII</TableHead>
-                    <TableHead>Override</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredAlerts.map((alert) => {
-                    const created = alert.createdAt ? new Date(alert.createdAt).toLocaleString() : '';
-                    const score = alert.piiDetails?.riskScore ?? null;
-                    const piiType = alert.piiDetails?.type ?? '';
                     return (
-                      <TableRow key={alert.id}>
-                        <TableCell className="font-medium">{alert.riskCategory}</TableCell>
-                        <TableCell>{created}</TableCell>
-                        <TableCell>{alert.userName}</TableCell>
-                        <TableCell>{alert.userEmail}</TableCell>
-                        <TableCell>{score != null ? score : '--'}</TableCell>
-                        <TableCell>{piiType || (alert.piiFlag ? 'Yes' : 'No')}</TableCell>
-                        <TableCell>{alert.override ? 'Yes' : 'No'}</TableCell>
-                      </TableRow>
+                      <div className="space-y-4">
+                        <div className="flex h-40 items-end gap-6">
+                          {clusters.map((cluster) => (
+                            <div key={cluster.label} className="flex-1">
+                              <div className="flex h-32 items-end justify-center gap-3">
+                                {cluster.bars.map((bar) => (
+                                  <div key={bar.label} className="flex flex-col items-center gap-1">
+                                    <div className="flex h-28 w-6 items-end rounded-full bg-muted overflow-hidden">
+                                      <div
+                                        className={`w-full ${bar.color}`}
+                                        style={{ height: barHeight(bar.value, maxValue) }}
+                                      />
+                                    </div>
+                                    <span className="text-[10px] leading-tight text-muted-foreground">
+                                      {bar.label}
+                                    </span>
+                                    <span className="text-xs font-medium">{bar.value}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              <p className="mt-2 text-xs text-center font-medium text-muted-foreground">
+                                {cluster.label}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     );
-                  })}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+                  })()}
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card/80">
+            <CardHeader>
+              <CardTitle>Recent alerts</CardTitle>
+              <CardDescription>Latest alerts from the last queries.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {alertsLoading && <p className="text-sm text-muted-foreground">Loading alerts…</p>}
+              {!alertsLoading && !alertsError && alertsData && filteredAlerts.length === 0 && (
+                <p className="text-sm text-muted-foreground">No alerts found for current filters.</p>
+              )}
+              {!alertsLoading && !alertsError && alertsData && filteredAlerts.length > 0 && (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Risk</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead>User</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Score</TableHead>
+                      <TableHead>PII</TableHead>
+                      <TableHead>Override</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredAlerts.map((alert) => {
+                      const created = alert.createdAt ? new Date(alert.createdAt).toLocaleString() : '';
+                      const score = alert.piiDetails?.riskScore ?? null;
+                      const piiType = alert.piiDetails?.type ?? '';
+                      return (
+                        <TableRow key={alert.id}>
+                          <TableCell className="font-medium">{alert.riskCategory}</TableCell>
+                          <TableCell>{created}</TableCell>
+                          <TableCell>{alert.userName}</TableCell>
+                          <TableCell>{alert.userEmail}</TableCell>
+                          <TableCell>{score != null ? score : '--'}</TableCell>
+                          <TableCell>{piiType || (alert.piiFlag ? 'Yes' : 'No')}</TableCell>
+                          <TableCell>{alert.override ? 'Yes' : 'No'}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );
