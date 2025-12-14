@@ -4,11 +4,16 @@ import { getStoredToken } from '@/lib/authStorage';
 
 export interface BillingRecord {
   id: string;
-  description: string;
-  amount: number;
+  description?: string;
+  amount?: number;
   currency?: string;
   tokens?: number;
   createdAt: string;
+  periodStart?: string;
+  periodEnd?: string;
+  totalCost?: number;
+  status?: string;
+  tenantId?: string;
 }
 
 export interface BillingAggregatePayload {
@@ -21,6 +26,11 @@ export interface BillingAggregate {
   totalTokens?: number;
   currency?: string;
   [key: string]: string | number | undefined;
+}
+
+export interface BillingStatementAggregatePayload {
+  periodStart: string;
+  periodEnd: string;
 }
 
 const buildHeaders = (token?: string) => ({
@@ -73,6 +83,35 @@ export const fetchBillingAggregate = async (
   }
 
   return (await response.json()) as BillingAggregate;
+};
+
+export const fetchBillingStatementAggregate = async (
+  payload: BillingStatementAggregatePayload,
+  authToken?: string,
+): Promise<BillingRecord | null> => {
+  const token = authToken ?? getStoredToken();
+  const response = await fetch(API_URLS.billing.aggregate, {
+    method: 'POST',
+    headers: buildHeaders(token),
+    body: JSON.stringify(payload),
+  });
+
+  if (response.status === 401) {
+    handleUnauthorized();
+    return null;
+  }
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody?.message || 'Failed to fetch billing aggregate record');
+  }
+
+  const data = (await response.json().catch(() => null)) as { record?: BillingRecord } | BillingRecord | null;
+  if (data && typeof data === 'object' && 'record' in data) {
+    return (data as { record?: BillingRecord }).record ?? null;
+  }
+
+  return (data as BillingRecord | null) ?? null;
 };
 
 export const fetchBillingAggregateMonthly = async (authToken?: string): Promise<BillingAggregate | null> => {
