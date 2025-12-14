@@ -89,6 +89,9 @@ export interface DashboardAlertsQuery {
   override?: boolean;
   riskScoreMin?: number;
   riskScoreMax?: number;
+  date?: string;
+  dateStart?: string;
+  dateEnd?: string;
   offset?: number;
   limit?: number;
   sortBy?: string;
@@ -212,6 +215,9 @@ export const fetchDashboardAlerts = async (
     if (typeof query.override === 'boolean') params.set('override', String(query.override));
     if (typeof query.riskScoreMin === 'number') params.set('riskScoreMin', String(query.riskScoreMin));
     if (typeof query.riskScoreMax === 'number') params.set('riskScoreMax', String(query.riskScoreMax));
+    if (query.date) params.set('date', query.date);
+    if (query.dateStart) params.set('dateStart', query.dateStart);
+    if (query.dateEnd) params.set('dateEnd', query.dateEnd);
     if (typeof query.offset === 'number') params.set('offset', String(query.offset));
     if (typeof query.limit === 'number') params.set('limit', String(query.limit));
     if (query.sortBy) params.set('sortBy', query.sortBy);
