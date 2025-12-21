@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, KeyboardEvent } from 'react';
+import { useRef, useEffect, KeyboardEvent } from 'react';
 import { ArrowUp } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -8,26 +8,35 @@ interface ChatInputProps {
   selectedModel: string;
   onChangeModel: (value: string) => void;
   modelOptions: { value: string; label: string }[];
+  value: string;
+  onInputChange: (value: string) => void;
+  inputRef?: React.RefObject<HTMLTextAreaElement>;
 }
 
-const ChatInput = ({ onSend, disabled, selectedModel, onChangeModel, modelOptions }: ChatInputProps) => {
-  const [input, setInput] = useState('');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+const ChatInput = ({
+  onSend,
+  disabled,
+  selectedModel,
+  onChangeModel,
+  modelOptions,
+  value,
+  onInputChange,
+  inputRef,
+}: ChatInputProps) => {
+  const textareaRef = inputRef ?? useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     }
-  }, [input]);
+  }, [value, textareaRef]);
 
   const handleSubmit = () => {
-    if (input.trim() && !disabled) {
-      onSend(input.trim());
-      setInput('');
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-      }
+    if (value.trim() && !disabled) {
+      onSend(value.trim());
+      onInputChange('');
+      textareaRef.current?.focus();
     }
   };
 
@@ -46,8 +55,8 @@ const ChatInput = ({ onSend, disabled, selectedModel, onChangeModel, modelOption
             <div className="relative bg-chat-input border border-chat-input-border rounded-2xl shadow-lg">
               <textarea
                 ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
+                value={value}
+                onChange={(e) => onInputChange(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Message Kotwal"
                 disabled={disabled}
@@ -57,7 +66,7 @@ const ChatInput = ({ onSend, disabled, selectedModel, onChangeModel, modelOption
               />
               <button
                 onClick={handleSubmit}
-                disabled={!input.trim() || disabled}
+                disabled={!value.trim() || disabled}
                 className="absolute right-2 bottom-2 p-1.5 rounded-lg bg-foreground text-background disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-80 transition-opacity"
               >
                 <ArrowUp className="w-5 h-5" />

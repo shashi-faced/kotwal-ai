@@ -144,7 +144,9 @@ const ChatContainer = () => {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
   const [sensitiveNotices, setSensitiveNotices] = useState<SensitiveDataNotice[]>([]);
+  const [chatInputValue, setChatInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const hasInitializedHistory = useRef(false);
   const { user, token, logout } = useAuth();
   const navigate = useNavigate();
@@ -283,7 +285,7 @@ const ChatContainer = () => {
     setSensitiveNotices([]);
   }, []);
 
-  const handleSendMessage = async (content: string) => {
+  const handleSendMessage = async (content: string, options: { skipNotices?: boolean } = {}) => {
     let targetConversation = conversations.find((c) => c.id === activeConversationId) ?? null;
 
     if (!targetConversation) {
@@ -308,6 +310,9 @@ const ChatContainer = () => {
       )
     );
 
+    if (!options.skipNotices) {
+      setChatInputValue('');
+    }
     setIsTyping(true);
 
     let assistantContent: string | null = null;
@@ -336,20 +341,22 @@ const ChatContainer = () => {
               : c,
           ),
         );
-        setSensitiveNotices((prev) => {
-          const notice: SensitiveDataNotice = {
-            message: error.message || 'Sensitive data found in message.',
-            details: error.details,
-            userMessage: content,
-            timestamp: new Date(),
-          };
-          return [notice, ...prev].slice(0, 3);
-        });
-        toast({
-          title: 'Sensitive data blocked',
-          description: 'Your last prompt contained personal information. Please remove it and try again.',
-          variant: 'destructive',
-        });
+
+        if (!options.skipNotices) {
+          setSensitiveNotices((prev) => {
+            const notice: SensitiveDataNotice = {
+              message: error.message || 'Sensitive data found in message.',
+              details: error.details,
+              userMessage: content,
+              timestamp: new Date(),
+            };
+            return [notice, ...prev].slice(0, 3);
+          });
+          setChatInputValue(content);
+          setTimeout(() => {
+            chatInputRef.current?.focus();
+          }, 0);
+        }
         console.warn('Sensitive data blocked', error);
         assistantContent = null;
       } else {
@@ -459,156 +466,172 @@ const ChatContainer = () => {
           navigate('/login');
         }}
       />
-
       <main className="flex-1 flex flex-col min-w-0">
-        {sensitiveNotices.length > 0 && (
-          <div className="px-4 pt-6">
-            <div className="mx-auto max-w-3xl space-y-4 rounded-2xl border border-amber-200/70 bg-amber-50/90 p-4 shadow-sm">
-              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                <div className="flex items-start gap-3">
-                  <div className="mt-1 rounded-full bg-white/70 p-2 text-amber-600">
-                    <ShieldAlert className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-amber-900">Sensitive prompt blocked</p>
-                    <p className="text-xs text-amber-800">
-                      Remove personal information from your last prompt before retrying.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {sensitiveNotices.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={clearAllSensitiveNotices}
-                      className="text-xs font-medium text-amber-800 underline-offset-4 hover:underline"
-                    >
-                      Dismiss all
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                {sensitiveNotices.map((notice) => {
-                  const findings = notice.details?.findings ?? [];
-                  const riskLine = [
-                    notice.details?.riskLevel ? `Risk: ${notice.details.riskLevel}` : null,
-                    typeof notice.details?.riskScore === 'number'
-                      ? `Score ${notice.details.riskScore}`
-                      : null,
-                    notice.details?.reason?.length ? `Reason: ${notice.details.reason.join(', ')}` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' • ');
-
-                  return (
-                    <div
-                      key={notice.timestamp.getTime()}
-                      className="rounded-2xl border border-amber-200 bg-white/80 p-4 text-sm text-amber-900 shadow"
-                    >
-                      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                        <div>
-                          <p className="font-medium">{notice.message}</p>
-                          {notice.details?.action && (
-                            <p className="text-xs text-amber-700">Action: {notice.details.action}</p>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => dismissSensitiveNotice(notice.timestamp.getTime())}
-                          className="text-xs font-medium text-amber-700 underline-offset-4 hover:underline"
-                        >
-                          Dismiss
-                        </button>
-                      </div>
-
-                      <div className="mt-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-500">
-                          Blocked prompt
-                        </p>
-                        <div className="mt-1 rounded-xl bg-amber-100/60 p-3 font-mono text-xs leading-relaxed text-amber-900">
-                          {notice.userMessage}
-                        </div>
-                      </div>
-
-                      {findings.length > 0 && (
-                        <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50/70 p-3">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-500">
-                            Detected PII
-                          </p>
-                          <ul className="mt-2 grid gap-2 sm:grid-cols-2">
-                            {findings.map((finding, index) => (
-                              <li key={`${finding.type}-${index}`} className="rounded-lg bg-white/80 p-2 text-xs">
-                                <p className="font-medium">{finding.label ?? finding.type ?? 'Unknown'}</p>
-                                <p className="text-amber-700">
-                                  {finding.type ? finding.type : 'Pattern'}{' '}
-                                  {typeof finding.riskScore === 'number' ? `· Score ${finding.riskScore}` : ''}
-                                </p>
-                                {finding.layer && (
-                                  <p className="text-[11px] uppercase tracking-wide text-amber-500">{finding.layer}</p>
-                                )}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-
-                      {riskLine && <p className="mt-3 text-xs text-amber-700">{riskLine}</p>}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto">
-          {!activeConversation || activeConversation.messages.length === 0 ? (
-            <WelcomeScreen />
-          ) : (
-            <div className="pb-32">
-              {activeConversation.messages.map((message, index) => (
-                <ChatMessage
-                  key={message.id}
-                  message={message}
-                  isTyping={
-                    isTyping &&
-                    message.role === 'assistant' &&
-                    index === activeConversation.messages.length - 1
-                  }
-                />
-              ))}
-              {isTyping && activeConversation.messages[activeConversation.messages.length - 1]?.role === 'user' && (
-                <div className="chat-message chat-message-assistant fade-in">
-                  <div className="max-w-3xl mx-auto flex gap-4">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
-                      <svg
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="text-foreground"
-                      >
-                        <path
-                          d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.8956zm16.5963 3.8558L13.1038 8.364l2.0201-1.1638a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.4066-.6813zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6099-1.4997z"
-                          fill="currentColor"
-                        />
-                      </svg>
+          <div className="pb-32">
+            {sensitiveNotices.length > 0 && (
+              <div className="px-4 pt-6">
+                <div className="mx-auto max-w-3xl space-y-4 rounded-2xl border border-amber-200/70 bg-amber-50/90 p-4 shadow-sm">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-1 rounded-full bg-white/70 p-2 text-amber-600">
+                        <ShieldAlert className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-amber-900">Sensitive prompt blocked</p>
+                        <p className="text-xs text-amber-800">
+                          Remove personal information from your last prompt before retrying.
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <div className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" />
-                      <div className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" style={{ animationDelay: '0.2s' }} />
-                      <div className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" style={{ animationDelay: '0.4s' }} />
+                    <div className="flex items-center gap-2">
+                      {sensitiveNotices.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={clearAllSensitiveNotices}
+                          className="text-xs font-medium text-amber-800 underline-offset-4 hover:underline"
+                        >
+                          Dismiss all
+                        </button>
+                      )}
                     </div>
                   </div>
+
+                  <div className="space-y-4">
+                    {sensitiveNotices.map((notice) => (
+                      <div
+                        key={notice.timestamp.getTime()}
+                        className="rounded-2xl border border-amber-200 bg-white/80 p-4 text-sm text-amber-900 shadow"
+                      >
+                        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                          <div>
+                            <p className="font-medium">{notice.message}</p>
+                            {notice.details?.action && (
+                              <p className="text-xs text-amber-700">Action: {notice.details.action}</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs font-medium text-amber-800">
+                            Resolve the prompt below to continue.
+                          </div>
+                        </div>
+
+                        <div className="mt-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-500">
+                            Blocked prompt
+                          </p>
+                          <div className="mt-1 rounded-xl bg-amber-100/60 p-3 font-mono text-xs leading-relaxed text-amber-900">
+                            {notice.userMessage}
+                          </div>
+                        </div>
+
+                        {notice.details?.findings?.length ? (
+                          <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50/70 p-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-500">
+                              Detected PII
+                            </p>
+                            <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+                              {notice.details.findings.map((finding, index) => (
+                                <li
+                                  key={`${finding.type ?? 'pii'}-${index}`}
+                                  className="rounded-lg bg-white/80 p-2 text-xs"
+                                >
+                                  <p className="font-medium">{finding.label ?? finding.type ?? 'Unknown'}</p>
+                                  <p className="text-amber-700">
+                                    {finding.type ? finding.type : 'Pattern'}{' '}
+                                    {typeof finding.riskScore === 'number' ? `· Score ${finding.riskScore}` : ''}
+                                  </p>
+                                  {finding.layer && (
+                                    <p className="text-[11px] uppercase tracking-wide text-amber-500">
+                                      {finding.layer}
+                                    </p>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+
+                        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <p className="text-[11px] text-amber-700 sm:max-w-xs">
+                            Only continue if you understand and accept the risk. Proceeding will be logged for compliance
+                            review.
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setChatInputValue(notice.userMessage);
+                                setTimeout(() => chatInputRef.current?.focus(), 0);
+                              }}
+                              className="rounded-lg border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                            >
+                              Edit prompt
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                dismissSensitiveNotice(notice.timestamp.getTime());
+                                await handleSendMessage(notice.userMessage, { skipNotices: true });
+                              }}
+                              className="inline-flex items-center justify-center rounded-lg bg-amber-600 px-3 py-1 text-xs font-semibold text-white shadow hover:bg-amber-700"
+                            >
+                              Proceed anyway
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-          )}
+              </div>
+            )}
+
+            {!activeConversation || activeConversation.messages.length === 0 ? (
+              <WelcomeScreen />
+            ) : (
+              <>
+                {activeConversation.messages.map((message, index) => (
+                  <ChatMessage
+                    key={message.id}
+                    message={message}
+                    isTyping={
+                      isTyping &&
+                      message.role === 'assistant' &&
+                      index === activeConversation.messages.length - 1
+                    }
+                  />
+                ))}
+                {isTyping && activeConversation.messages[activeConversation.messages.length - 1]?.role === 'user' && (
+                  <div className="chat-message chat-message-assistant fade-in">
+                    <div className="max-w-3xl mx-auto flex gap-4">
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
+                        <svg
+                          width="24"
+                          height="24"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="text-foreground"
+                        >
+                          <path
+                            d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.8956zm16.5963 3.8558L13.1038 8.364l2.0201-1.1638a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.4066-.6813zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6099-1.4997z"
+                            fill="currentColor"
+                          />
+                        </svg>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" />
+                        <div className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" style={{ animationDelay: '0.2s' }} />
+                        <div className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" style={{ animationDelay: '0.4s' }} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
         </div>
 
         {/* Input Area */}
@@ -619,6 +642,9 @@ const ChatContainer = () => {
             selectedModel={selectedModel}
             onChangeModel={setSelectedModel}
             modelOptions={modelOptions}
+            value={chatInputValue}
+            onInputChange={setChatInputValue}
+            inputRef={chatInputRef}
           />
         </div>
       </main>
