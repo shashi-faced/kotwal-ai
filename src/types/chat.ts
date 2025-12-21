@@ -7,6 +7,7 @@ export interface Message {
 
 export interface Conversation {
   id: string;
+  sessionId: string;
   title: string;
   messages: Message[];
   createdAt: Date;

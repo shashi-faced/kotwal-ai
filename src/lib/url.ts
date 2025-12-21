@@ -9,6 +9,7 @@ export const API_URLS = {
   chat: {
     models: withBase('/api/chat-models'),
     send: withBase('/api/chat'),
+    sessions: withBase('/api/chat-sessions'),
   },
   user: {
     role: withBase('/api/auth/user/role'),

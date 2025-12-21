@@ -4,16 +4,124 @@ import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
 import WelcomeScreen from './WelcomeScreen';
 import Sidebar from './Sidebar';
-import { fetchChatModels, fetchChatResponse, ChatModel } from '@/services/chatApi';
+import {
+  fetchChatModels,
+  fetchChatResponse,
+  fetchChatSession,
+  fetchChatSessions,
+  ChatModel,
+  ChatSession,
+} from '@/services/chatApi';
 import { toast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+
+const generateSessionId = () => {
+  if (typeof window !== 'undefined' && window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+
+  const bytes = new Uint8Array(16);
+  if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  // Set UUID version (4) and variant bits.
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+  const byteToHex: string[] = [];
+  for (let i = 0; i < 256; i += 1) {
+    byteToHex.push(i.toString(16).padStart(2, '0'));
+  }
+
+  return (
+    byteToHex[bytes[0]] +
+    byteToHex[bytes[1]] +
+    byteToHex[bytes[2]] +
+    byteToHex[bytes[3]] +
+    '-' +
+    byteToHex[bytes[4]] +
+    byteToHex[bytes[5]] +
+    '-' +
+    byteToHex[bytes[6]] +
+    byteToHex[bytes[7]] +
+    '-' +
+    byteToHex[bytes[8]] +
+    byteToHex[bytes[9]] +
+    '-' +
+    byteToHex[bytes[10]] +
+    byteToHex[bytes[11]] +
+    byteToHex[bytes[12]] +
+    byteToHex[bytes[13]] +
+    byteToHex[bytes[14]] +
+    byteToHex[bytes[15]]
+  );
+};
 
 const FALLBACK_MODELS: { value: string; label: string }[] = [
   { value: 'fallback-mini', label: 'Kotwal Mini · Fast' },
   { value: 'fallback-pro', label: 'Kotwal Pro · Balanced' },
   { value: 'fallback-ultra', label: 'Kotwal Ultra · Detailed' },
 ];
+
+const normalizeSessionMessages = (session: ChatSession): Message[] => {
+  const rawMessages = (session.messages ?? []) as unknown[];
+  if (!rawMessages.length) return [];
+
+  const normalized: Message[] = [];
+  rawMessages.forEach((entry, index) => {
+    if (!entry || typeof entry !== 'object') return;
+    const record = entry as Record<string, unknown>;
+    const baseId =
+      (typeof record.id === 'string' && record.id) || `${session.sessionId}-${index}`;
+    const timestampSource =
+      record.timestamp ??
+      record.updatedAt ??
+      record.createdAt ??
+      new Date();
+    const timestamp =
+      timestampSource instanceof Date
+        ? timestampSource
+        : typeof timestampSource === 'string'
+          ? new Date(timestampSource)
+          : new Date();
+
+    if ('role' in record && (record.role === 'user' || record.role === 'assistant')) {
+      normalized.push({
+        id: typeof record.id === 'string' ? record.id : baseId,
+        role: record.role as 'user' | 'assistant',
+        content: typeof record.content === 'string' ? record.content : '',
+        timestamp,
+      });
+      return;
+    }
+
+    if (typeof record.message === 'string') {
+      normalized.push({
+        id: `${baseId}-user`,
+        role: 'user',
+        content: record.message,
+        timestamp,
+      });
+    }
+
+    if (typeof record.response === 'string') {
+      normalized.push({
+        id: `${baseId}-assistant`,
+        role: 'assistant',
+        content: record.response,
+        timestamp,
+      });
+    }
+  });
+
+  return normalized;
+};
 
 const ChatContainer = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -23,7 +131,10 @@ const ChatContainer = () => {
   const [modelOptions, setModelOptions] = useState(FALLBACK_MODELS);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState(FALLBACK_MODELS[0].value);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const hasInitializedHistory = useRef(false);
   const { user, token, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -36,6 +147,24 @@ const ChatContainer = () => {
   useEffect(() => {
     scrollToBottom();
   }, [activeConversation?.messages, scrollToBottom]);
+
+  const mapSessionToConversation = useCallback((session: ChatSession): Conversation => {
+    const fallbackTitle =
+      session.lastMessageAt || session.startedAt
+        ? new Date(session.lastMessageAt ?? session.startedAt ?? new Date()).toLocaleString()
+        : 'Previous chat';
+
+    const normalizedMessages = normalizeSessionMessages(session);
+
+    return {
+      id: session.sessionId,
+      sessionId: session.sessionId,
+      title: session.title?.trim() || fallbackTitle,
+      messages: normalizedMessages,
+      createdAt: session.startedAt ? new Date(session.startedAt) : new Date(),
+      updatedAt: session.lastMessageAt ? new Date(session.lastMessageAt) : new Date(),
+    };
+  }, []);
 
   useEffect(() => {
     if (!token) return;
@@ -74,27 +203,76 @@ const ChatContainer = () => {
     };
   }, [token]);
 
-  const createNewConversation = (firstMessage: string): string => {
-    const id = Date.now().toString();
+  useEffect(() => {
+    if (!token) return;
+    let isMounted = true;
+
+    const loadHistory = async () => {
+      setHistoryLoading(true);
+      try {
+        const sessions = await fetchChatSessions(token);
+        if (!isMounted) return;
+        const mapped = sessions.map(mapSessionToConversation);
+        setConversations((prev) => {
+          const existingIds = new Set(prev.map((c) => c.id));
+          const merged = [...mapped];
+          prev.forEach((conversation) => {
+            if (!existingIds.has(conversation.id)) {
+              merged.push(conversation);
+            }
+          });
+          return merged;
+        });
+        if (!hasInitializedHistory.current && mapped.length > 0) {
+          setActiveConversationId((prev) => prev ?? mapped[0].id);
+          hasInitializedHistory.current = true;
+        }
+      } catch (error) {
+        console.error('Failed to load chat history', error);
+        toast({
+          title: 'Unable to load history',
+          description: error instanceof Error ? error.message : 'Please try again later.',
+          variant: 'destructive',
+        });
+      } finally {
+        if (isMounted) {
+          setHistoryLoading(false);
+        }
+      }
+    };
+
+    void loadHistory();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
+
+  const createNewConversation = (firstMessage: string): Conversation => {
+    const sessionId = generateSessionId();
     const title = firstMessage.slice(0, 30) + (firstMessage.length > 30 ? '...' : '');
     const newConversation: Conversation = {
-      id,
+      id: sessionId,
+      sessionId,
       title,
       messages: [],
       createdAt: new Date(),
       updatedAt: new Date(),
     };
     setConversations((prev) => [newConversation, ...prev]);
-    setActiveConversationId(id);
-    return id;
+    setActiveConversationId(sessionId);
+    return newConversation;
   };
 
   const handleSendMessage = async (content: string) => {
-    let conversationId = activeConversationId;
-    
-    if (!conversationId) {
-      conversationId = createNewConversation(content);
+    let targetConversation = conversations.find((c) => c.id === activeConversationId) ?? null;
+
+    if (!targetConversation) {
+      targetConversation = createNewConversation(content);
     }
+
+    const conversationId = targetConversation.id;
+    const sessionId = targetConversation.sessionId ?? targetConversation.id;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -120,6 +298,7 @@ const ChatContainer = () => {
         {
           modelId: selectedModel,
           message: content,
+          sessionId,
         },
         token,
       );
@@ -153,6 +332,40 @@ const ChatContainer = () => {
     setIsTyping(false);
   };
 
+  const hydrateConversation = useCallback(
+    async (sessionId: string) => {
+      if (!token) return;
+      setLoadingSessionId(sessionId);
+      try {
+        const session = await fetchChatSession(sessionId, token);
+        if (!session) {
+          toast({
+            title: 'Session unavailable',
+            description: 'Unable to fetch this chat session. Please try another one.',
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        const hydrated = mapSessionToConversation(session);
+        setConversations((prev) => {
+          const others = prev.filter((c) => c.id !== hydrated.id);
+          return [hydrated, ...others];
+        });
+      } catch (error) {
+        console.error('Failed to load chat session', error);
+        toast({
+          title: 'Unable to load chat',
+          description: error instanceof Error ? error.message : 'Please try again later.',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoadingSessionId((current) => (current === sessionId ? null : current));
+      }
+    },
+    [mapSessionToConversation, toast, token],
+  );
+
   const handleNewChat = () => {
     setActiveConversationId(null);
     setSidebarOpen(false);
@@ -161,6 +374,11 @@ const ChatContainer = () => {
   const handleSelectConversation = (id: string) => {
     setActiveConversationId(id);
     setSidebarOpen(false);
+
+    const existingConversation = conversations.find((c) => c.id === id);
+    if (!existingConversation || existingConversation.messages.length === 0) {
+      void hydrateConversation(id);
+    }
   };
 
   return (
@@ -170,6 +388,7 @@ const ChatContainer = () => {
         activeConversationId={activeConversationId}
         onSelectConversation={handleSelectConversation}
         onNewChat={handleNewChat}
+        loadingSessionId={loadingSessionId}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
         onOpenDashboard={() => {

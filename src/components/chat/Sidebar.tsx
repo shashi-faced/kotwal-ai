@@ -7,6 +7,7 @@ interface SidebarProps {
   activeConversationId: string | null;
   onSelectConversation: (id: string) => void;
   onNewChat: () => void;
+  loadingSessionId: string | null;
   isOpen: boolean;
   onToggle: () => void;
   onOpenDashboard: () => void;
@@ -19,6 +20,7 @@ const Sidebar = ({
   activeConversationId,
   onSelectConversation,
   onNewChat,
+  loadingSessionId,
   isOpen,
   onToggle,
   onOpenDashboard,
@@ -66,21 +68,30 @@ const Sidebar = ({
         {/* Conversations List */}
         <div className="flex-1 overflow-y-auto px-2">
           <div className="space-y-1">
-            {conversations.map((conversation) => (
-              <button
-                key={conversation.id}
-                onClick={() => onSelectConversation(conversation.id)}
-                className={cn(
-                  'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-left transition-colors',
-                  activeConversationId === conversation.id
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                    : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
-                )}
-              >
-                <MessageSquare className="w-4 h-4 flex-shrink-0" />
-                <span className="truncate">{conversation.title}</span>
-              </button>
-            ))}
+            {conversations.map((conversation) => {
+              const isActive = activeConversationId === conversation.id;
+              const isLoading = loadingSessionId === conversation.id;
+              return (
+                <button
+                  key={conversation.id}
+                  onClick={() => onSelectConversation(conversation.id)}
+                  className={cn(
+                    'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-left transition-colors',
+                    isActive
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                      : 'text-sidebar-foreground hover:bg-sidebar-accent/50',
+                    isLoading && 'opacity-70'
+                  )}
+                  disabled={isLoading}
+                >
+                  <MessageSquare className="w-4 h-4 flex-shrink-0" />
+                  <span className="truncate">{conversation.title}</span>
+                  {isLoading && (
+                    <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground">Loading…</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
