@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { ShieldAlert } from 'lucide-react';
 import { Message, Conversation } from '@/types/chat';
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
@@ -11,6 +12,8 @@ import {
   fetchChatSessions,
   ChatModel,
   ChatSession,
+  SensitiveDataBlockedError,
+  PiiDetectionDetails,
 } from '@/services/chatApi';
 import { toast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
@@ -68,6 +71,13 @@ const FALLBACK_MODELS: { value: string; label: string }[] = [
   { value: 'fallback-pro', label: 'Kotwal Pro · Balanced' },
   { value: 'fallback-ultra', label: 'Kotwal Ultra · Detailed' },
 ];
+
+interface SensitiveDataNotice {
+  message: string;
+  details?: PiiDetectionDetails;
+  userMessage: string;
+  timestamp: Date;
+}
 
 const normalizeSessionMessages = (session: ChatSession): Message[] => {
   const rawMessages = (session.messages ?? []) as unknown[];
@@ -133,6 +143,7 @@ const ChatContainer = () => {
   const [selectedModel, setSelectedModel] = useState(FALLBACK_MODELS[0].value);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
+  const [sensitiveNotices, setSensitiveNotices] = useState<SensitiveDataNotice[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasInitializedHistory = useRef(false);
   const { user, token, logout } = useAuth();
@@ -264,6 +275,14 @@ const ChatContainer = () => {
     return newConversation;
   };
 
+  const dismissSensitiveNotice = useCallback((timestamp: number) => {
+    setSensitiveNotices((prev) => prev.filter((notice) => notice.timestamp.getTime() !== timestamp));
+  }, []);
+
+  const clearAllSensitiveNotices = useCallback(() => {
+    setSensitiveNotices([]);
+  }, []);
+
   const handleSendMessage = async (content: string) => {
     let targetConversation = conversations.find((c) => c.id === activeConversationId) ?? null;
 
@@ -291,7 +310,8 @@ const ChatContainer = () => {
 
     setIsTyping(true);
 
-    let assistantContent = '';
+    let assistantContent: string | null = null;
+    let blockedDueToSensitive = false;
 
     try {
       assistantContent = await fetchChatResponse(
@@ -303,32 +323,69 @@ const ChatContainer = () => {
         token,
       );
     } catch (error) {
-      console.error('Failed to fetch chat response', error);
-      assistantContent =
-        "I'm having trouble reaching the Kotwal API right now, but we can keep chatting if you'd like!";
-      toast({
-        title: 'Unable to reach Kotwal',
-        description: error instanceof Error ? error.message : 'Unknown error occurred.',
-        variant: 'destructive',
-      });
+      if (error instanceof SensitiveDataBlockedError) {
+        blockedDueToSensitive = true;
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === conversationId
+              ? {
+                  ...c,
+                  messages: c.messages.filter((message) => message.id !== userMessage.id),
+                  updatedAt: new Date(),
+                }
+              : c,
+          ),
+        );
+        setSensitiveNotices((prev) => {
+          const notice: SensitiveDataNotice = {
+            message: error.message || 'Sensitive data found in message.',
+            details: error.details,
+            userMessage: content,
+            timestamp: new Date(),
+          };
+          return [notice, ...prev].slice(0, 3);
+        });
+        toast({
+          title: 'Sensitive data blocked',
+          description: 'Your last prompt contained personal information. Please remove it and try again.',
+          variant: 'destructive',
+        });
+        console.warn('Sensitive data blocked', error);
+        assistantContent = null;
+      } else {
+        console.error('Failed to fetch chat response', error);
+        assistantContent =
+          "I'm having trouble reaching the Kotwal API right now, but we can keep chatting if you'd like!";
+        toast({
+          title: 'Unable to reach Kotwal',
+          description: error instanceof Error ? error.message : 'Unknown error occurred.',
+          variant: 'destructive',
+        });
+      }
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    if (assistantContent !== null) {
+      await new Promise((resolve) => setTimeout(resolve, 400));
 
-    const assistantMessage: Message = {
-      id: (Date.now() + 1).toString(),
-      role: 'assistant',
-      content: assistantContent,
-      timestamp: new Date(),
-    };
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: assistantContent,
+        timestamp: new Date(),
+      };
 
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === conversationId
-          ? { ...c, messages: [...c.messages, assistantMessage], updatedAt: new Date() }
-          : c
-      )
-    );
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === conversationId
+            ? { ...c, messages: [...c.messages, assistantMessage], updatedAt: new Date() }
+            : c
+        )
+      );
+    } else if (blockedDueToSensitive) {
+      setIsTyping(false);
+      return;
+    }
+
     setIsTyping(false);
   };
 
@@ -404,6 +461,108 @@ const ChatContainer = () => {
       />
 
       <main className="flex-1 flex flex-col min-w-0">
+        {sensitiveNotices.length > 0 && (
+          <div className="px-4 pt-6">
+            <div className="mx-auto max-w-3xl space-y-4 rounded-2xl border border-amber-200/70 bg-amber-50/90 p-4 shadow-sm">
+              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="mt-1 rounded-full bg-white/70 p-2 text-amber-600">
+                    <ShieldAlert className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-amber-900">Sensitive prompt blocked</p>
+                    <p className="text-xs text-amber-800">
+                      Remove personal information from your last prompt before retrying.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {sensitiveNotices.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={clearAllSensitiveNotices}
+                      className="text-xs font-medium text-amber-800 underline-offset-4 hover:underline"
+                    >
+                      Dismiss all
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {sensitiveNotices.map((notice) => {
+                  const findings = notice.details?.findings ?? [];
+                  const riskLine = [
+                    notice.details?.riskLevel ? `Risk: ${notice.details.riskLevel}` : null,
+                    typeof notice.details?.riskScore === 'number'
+                      ? `Score ${notice.details.riskScore}`
+                      : null,
+                    notice.details?.reason?.length ? `Reason: ${notice.details.reason.join(', ')}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' • ');
+
+                  return (
+                    <div
+                      key={notice.timestamp.getTime()}
+                      className="rounded-2xl border border-amber-200 bg-white/80 p-4 text-sm text-amber-900 shadow"
+                    >
+                      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <p className="font-medium">{notice.message}</p>
+                          {notice.details?.action && (
+                            <p className="text-xs text-amber-700">Action: {notice.details.action}</p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => dismissSensitiveNotice(notice.timestamp.getTime())}
+                          className="text-xs font-medium text-amber-700 underline-offset-4 hover:underline"
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+
+                      <div className="mt-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-500">
+                          Blocked prompt
+                        </p>
+                        <div className="mt-1 rounded-xl bg-amber-100/60 p-3 font-mono text-xs leading-relaxed text-amber-900">
+                          {notice.userMessage}
+                        </div>
+                      </div>
+
+                      {findings.length > 0 && (
+                        <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50/70 p-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-500">
+                            Detected PII
+                          </p>
+                          <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+                            {findings.map((finding, index) => (
+                              <li key={`${finding.type}-${index}`} className="rounded-lg bg-white/80 p-2 text-xs">
+                                <p className="font-medium">{finding.label ?? finding.type ?? 'Unknown'}</p>
+                                <p className="text-amber-700">
+                                  {finding.type ? finding.type : 'Pattern'}{' '}
+                                  {typeof finding.riskScore === 'number' ? `· Score ${finding.riskScore}` : ''}
+                                </p>
+                                {finding.layer && (
+                                  <p className="text-[11px] uppercase tracking-wide text-amber-500">{finding.layer}</p>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {riskLine && <p className="mt-3 text-xs text-amber-700">{riskLine}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto">
           {!activeConversation || activeConversation.messages.length === 0 ? (

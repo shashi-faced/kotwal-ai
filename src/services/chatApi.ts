@@ -30,6 +30,41 @@ interface ChatCompletionResponse {
   content?: string;
 }
 
+export interface PiiDetectionFinding {
+  type?: string;
+  label?: string;
+  riskScore?: number;
+  layer?: string;
+}
+
+export interface PiiDetectionDetails {
+  success?: boolean;
+  safe?: boolean;
+  action?: string;
+  findings?: PiiDetectionFinding[];
+  latencyMs?: number;
+  reason?: string[];
+  riskLevel?: string;
+  riskScore?: number;
+  sensitive?: boolean;
+}
+
+interface ChatApiErrorBody {
+  message?: string;
+  error?: string;
+  piiDetails?: PiiDetectionDetails;
+}
+
+export class SensitiveDataBlockedError extends Error {
+  details?: PiiDetectionDetails;
+
+  constructor(message: string, details?: PiiDetectionDetails) {
+    super(message);
+    this.name = 'SensitiveDataBlockedError';
+    this.details = details;
+  }
+}
+
 type FetchChatResponseArgs = {
   modelId: string;
   message: string;
@@ -193,8 +228,24 @@ export const fetchChatResponse = async (
   }
 
   if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    throw new Error(errorBody?.message || 'Failed to get chat response');
+    const errorBody = (await response.json().catch(() => ({}))) as ChatApiErrorBody;
+    const piiDetails = errorBody?.piiDetails;
+
+    if (
+      response.status === 400 &&
+      piiDetails &&
+      typeof piiDetails === 'object' &&
+      typeof piiDetails.action === 'string' &&
+      piiDetails.action.toUpperCase() === 'BLOCK'
+    ) {
+      const messageFromApi =
+        (typeof errorBody.error === 'string' && errorBody.error) ||
+        (typeof errorBody.message === 'string' && errorBody.message) ||
+        'Sensitive data found in message.';
+      throw new SensitiveDataBlockedError(messageFromApi, piiDetails);
+    }
+
+    throw new Error(errorBody?.message || errorBody?.error || 'Failed to get chat response');
   }
 
   const data: ChatCompletionResponse = await response.json();
