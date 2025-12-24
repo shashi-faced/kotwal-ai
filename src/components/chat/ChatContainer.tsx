@@ -287,7 +287,7 @@ const ChatContainer = () => {
 
   const handleSendMessage = async (
     content: string,
-    options: { skipNotices?: boolean; override?: boolean } = {},
+    options: { skipNotices?: boolean; overridePII?: boolean } = {},
   ) => {
     let targetConversation = conversations.find((c) => c.id === activeConversationId) ?? null;
 
@@ -327,7 +327,7 @@ const ChatContainer = () => {
           modelId: selectedModel,
           message: content,
           sessionId,
-          override: options.override ?? false,
+          overridePII: options.overridePII ?? false,
         },
         token,
       );
@@ -346,7 +346,7 @@ const ChatContainer = () => {
           ),
         );
 
-        if (!options.skipNotices && !options.override) {
+        if (!options.skipNotices && !options.overridePII) {
           setSensitiveNotices((prev) => {
             const notice: SensitiveDataNotice = {
               message: error.message || 'Sensitive data found in message.',
@@ -578,7 +578,7 @@ const ChatContainer = () => {
                                 dismissSensitiveNotice(notice.timestamp.getTime());
                                 await handleSendMessage(notice.userMessage, {
                                   skipNotices: true,
-                                  override: true,
+                                  overridePII: true,
                                 });
                               }}
                               className="inline-flex items-center justify-center rounded-lg bg-amber-600 px-3 py-1 text-xs font-semibold text-white shadow hover:bg-amber-700"

@@ -69,7 +69,7 @@ type FetchChatResponseArgs = {
   modelId: string;
   message: string;
   sessionId: string;
-  override?: boolean;
+  overridePII?: boolean;
 };
 
 const extractArray = <T>(payload: unknown, keys: string[] = []): T[] => {
@@ -204,7 +204,7 @@ const normalizeSessionPayload = (
 };
 
 export const fetchChatResponse = async (
-  { modelId, message, sessionId, override = false }: FetchChatResponseArgs,
+  { modelId, message, sessionId, overridePII = false }: FetchChatResponseArgs,
   authToken?: string,
 ): Promise<string> => {
   const token = authToken ?? getStoredToken();
@@ -218,7 +218,7 @@ export const fetchChatResponse = async (
       modelId,
       message,
       sessionId,
-      ...(override ? { override: true } : {}),
+      ...(overridePII ? { overridePII: true } : {}),
     }),
   });
 
