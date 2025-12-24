@@ -229,7 +229,10 @@ export const fetchChatResponse = async (
 
   if (!response.ok) {
     const errorBody = (await response.json().catch(() => ({}))) as ChatApiErrorBody;
+    console.log('API Error Response:', { status: response.status, body: errorBody });
+    
     const piiDetails = errorBody?.piiDetails;
+    console.log('PII Details:', piiDetails);
 
     if (
       response.status === 400 &&
@@ -238,6 +241,7 @@ export const fetchChatResponse = async (
       typeof piiDetails.action === 'string' &&
       piiDetails.action.toUpperCase() === 'BLOCK'
     ) {
+      console.log('Throwing SensitiveDataBlockedError');
       const messageFromApi =
         (typeof errorBody.error === 'string' && errorBody.error) ||
         (typeof errorBody.message === 'string' && errorBody.message) ||
