@@ -34,7 +34,7 @@ const Sidebar = ({
       {/* Mobile Toggle Button */}
       <button
         onClick={onToggle}
-        className="fixed top-3 left-3 z-50 p-2 rounded-lg bg-sidebar hover:bg-sidebar-accent transition-colors md:hidden"
+        className="fixed top-3 left-3 z-50 rounded-full border border-border bg-white/90 p-2 text-slate-700 shadow-sm transition-colors hover:bg-muted md:hidden"
       >
         {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
       </button>
@@ -50,15 +50,15 @@ const Sidebar = ({
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed left-0 top-0 z-40 h-full w-64 bg-sidebar flex flex-col transition-transform duration-300 md:relative md:translate-x-0',
-          isOpen ? 'translate-x-0 slide-in-left' : '-translate-x-full'
+          'fixed left-0 top-0 z-40 flex h-full w-64 flex-col border-r border-border bg-white/95 backdrop-blur-lg transition-transform duration-300 md:relative md:translate-x-0',
+          isOpen ? 'translate-x-0 slide-in-left' : '-translate-x-full',
         )}
       >
         {/* New Chat Button */}
         <div className="p-2">
           <button
             onClick={onNewChat}
-            className="w-full flex items-center gap-3 px-3 py-3 rounded-lg border border-sidebar-border hover:bg-sidebar-accent transition-colors text-sidebar-foreground"
+            className="flex w-full items-center gap-3 rounded-xl border border-border bg-white/80 px-3 py-3 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
           >
             <Plus className="w-4 h-4" />
             <span className="text-sm">New chat</span>
@@ -76,10 +76,10 @@ const Sidebar = ({
                   key={conversation.id}
                   onClick={() => onSelectConversation(conversation.id)}
                   className={cn(
-                    'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-left transition-colors',
+                    'flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors',
                     isActive
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                      : 'text-sidebar-foreground hover:bg-sidebar-accent/50',
+                      ? 'bg-slate-100 text-slate-900 shadow-sm'
+                      : 'text-slate-600 hover:bg-slate-100',
                     isLoading && 'opacity-70'
                   )}
                   disabled={isLoading}
@@ -87,7 +87,7 @@ const Sidebar = ({
                   <MessageSquare className="w-4 h-4 flex-shrink-0" />
                   <span className="truncate">{conversation.title}</span>
                   {isLoading && (
-                    <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground">Loading…</span>
+                    <span className="ml-auto text-[10px] uppercase tracking-wide text-slate-400">Loading…</span>
                   )}
                 </button>
               );
@@ -96,26 +96,26 @@ const Sidebar = ({
         </div>
 
         {/* Footer */}
-        <div className="p-3 border-t border-sidebar-border">
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-sidebar-foreground">
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-medium">
+        <div className="border-t border-border p-3">
+          <div className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-700">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground font-medium">
               {initials}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-medium truncate">{userLabel}</p>
-              <p className="text-xs text-muted-foreground truncate">Secure session</p>
+              <p className="truncate text-sm font-semibold text-slate-800">{userLabel}</p>
+              <p className="truncate text-xs text-slate-500">Secure session</p>
             </div>
           </div>
           <button
             onClick={onOpenDashboard}
-            className="mt-3 w-full flex items-center justify-between px-3 py-2 rounded-lg border border-sidebar-border text-sm text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+            className="mt-3 flex w-full items-center justify-between rounded-xl border border-border px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-100"
           >
             <span>Open Dashboard</span>
             <LayoutDashboard className="w-4 h-4" />
           </button>
           <button
             onClick={onLogout}
-            className="mt-3 w-full flex items-center justify-between px-3 py-2 rounded-lg border border-destructive/40 text-sm text-destructive hover:bg-destructive/10 transition-colors"
+            className="mt-3 flex w-full items-center justify-between rounded-xl border border-destructive/40 px-3 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
           >
             <span>Logout</span>
             <LogOut className="w-4 h-4" />

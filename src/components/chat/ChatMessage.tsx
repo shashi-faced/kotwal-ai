@@ -12,7 +12,7 @@ const ChatMessage = ({ message, isTyping }: ChatMessageProps) => {
 
   return (
     <div className={`chat-message ${isUser ? 'chat-message-user' : 'chat-message-assistant'} fade-in`}>
-      <div className="max-w-3xl mx-auto flex gap-4">
+      <div className="flex w-full gap-4">
         {/* Avatar */}
         <div className="flex-shrink-0 w-8 h-8">
           {isUser ? (
@@ -40,13 +40,15 @@ const ChatMessage = ({ message, isTyping }: ChatMessageProps) => {
 
         {/* Message Content */}
         <div className="flex-1 min-w-0">
-          {isUser ? (
-            <p className="text-foreground whitespace-pre-wrap">{message.content}</p>
-          ) : (
-            <div className={isTyping ? 'typing-cursor' : ''}>
-              <MarkdownRenderer content={message.content} />
-            </div>
-          )}
+          <div className="message-bubble">
+            {isUser ? (
+              <p className="text-foreground whitespace-pre-wrap">{message.content}</p>
+            ) : (
+              <div className={isTyping ? 'typing-cursor' : ''}>
+                <MarkdownRenderer content={message.content} />
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

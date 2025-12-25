@@ -1,8 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Söhne:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Söhne:wght@400;500;600&display=swap');
 
 @layer base {
   :root {
@@ -47,12 +47,70 @@
 
     /* Kotwal specific tokens */
     --chat-user-bg: 0 0% 13%;
+    --chat-user-border: 0 0% 25%;
     --chat-assistant-bg: 0 0% 15%;
+    --chat-assistant-border: 0 0% 20%;
     --chat-code-bg: 0 0% 8%;
     --chat-code-header: 0 0% 12%;
     --chat-input-bg: 0 0% 17%;
     --chat-input-border: 0 0% 25%;
     --chat-hover: 0 0% 18%;
+  }
+
+  .chat-theme {
+    --background: 210 33% 98%;
+    --foreground: 222 47% 13%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 13%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 13%;
+
+    --primary: 161 64% 40%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 213 35% 95%;
+    --secondary-foreground: 220 25% 22%;
+
+    --muted: 215 16% 90%;
+    --muted-foreground: 220 14% 40%;
+
+    --accent: 215 38% 95%;
+    --accent-foreground: 220 25% 22%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 216 21% 86%;
+    --input: 216 20% 82%;
+    --ring: 215 71% 50%;
+
+    --radius: 1.5rem;
+
+    --sidebar-background: 220 33% 97%;
+    --sidebar-foreground: 222 32% 20%;
+    --sidebar-primary: 215 72% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 100%;
+    --sidebar-accent-foreground: 222 32% 20%;
+    --sidebar-border: 218 20% 86%;
+    --sidebar-ring: 215 72% 50%;
+
+    /* Kotwal specific tokens */
+    --chat-user-bg: 0 0% 100%;
+    --chat-user-border: 210 24% 88%;
+    --chat-assistant-bg: 220 28% 94%;
+    --chat-assistant-border: 220 20% 82%;
+    --chat-code-bg: 218 35% 92%;
+    --chat-code-header: 219 32% 88%;
+    --chat-input-bg: 0 0% 100%;
+    --chat-input-border: 215 24% 88%;
+    --chat-hover: 216 32% 95%;
+
+    color-scheme: light;
+    background-color: hsl(var(--background));
+    background-image: radial-gradient(circle at 15% 0%, #ffffff 0%, #f6f8fc 48%, #e6ebf4 100%);
   }
 
   .dark {
@@ -85,10 +143,13 @@
 
   html {
     color-scheme: dark;
+    background-color: hsl(var(--background));
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply text-foreground antialiased;
+    min-height: 100vh;
+    background-color: hsl(var(--background));
     font-family: 'Söhne', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
 
@@ -103,26 +164,72 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: hsl(var(--muted));
+    background: hsl(var(--border));
     border-radius: 4px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--muted-foreground));
+    background: hsl(var(--muted));
   }
 }
 
 @layer components {
   .chat-message {
-    @apply px-4 py-6;
+    @apply px-6 py-4;
+    color: #0f172a;
+  }
+
+  .message-bubble {
+    border-radius: 1.5rem;
+    border: 1px solid hsl(var(--border));
+    padding: 1.35rem;
+    box-shadow: 0 15px 35px rgba(15, 23, 42, 0.08);
+    transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+    color: #0f172a;
+    background-color: #fff;
+  }
+
+  .message-bubble :where(p, li, span, code, strong, em, a, h1, h2, h3, h4) {
+    color: inherit;
+  }
+
+  .message-bubble :where(*, .text-foreground) {
+    color: inherit !important;
+  }
+
+  .message-bubble:hover {
+    border-color: hsl(var(--ring));
+    box-shadow: 0 25px 60px rgba(15, 23, 42, 0.12);
+    transform: translateY(-1px);
   }
 
   .chat-message-user {
-    background: hsl(var(--chat-user-bg));
+    background: transparent;
+    color: #000;
+  }
+
+  .chat-message-user .message-bubble {
+    background-color: #ffffff;
+    border-color: hsl(var(--chat-user-border, var(--border)));
+    color: #0f172a;
   }
 
   .chat-message-assistant {
-    background: hsl(var(--chat-assistant-bg));
+    background: transparent;
+  }
+
+  .chat-message-assistant .message-bubble {
+    background-color: #f5f7fb;
+    border-color: hsl(var(--chat-assistant-border, var(--border)));
+    color: #0f172a;
+  }
+
+  .transcript-gradient {
+    border-radius: 2rem;
+    background-color: rgba(255, 255, 255, 0.95);
+    border: 1px solid hsla(var(--border), 0.7);
+    box-shadow: 0 35px 70px rgba(15, 23, 42, 0.08);
+    color: #0f172a;
   }
 
   .code-block-wrapper {
