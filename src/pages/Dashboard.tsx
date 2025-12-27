@@ -9,6 +9,7 @@ import ChatModelsSection from '@/components/dashboard/sections/ChatModelsSection
 import BillingSection from '@/components/dashboard/sections/BillingSection';
 import SecuritySection from '@/components/dashboard/sections/SecuritySection';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/context/AuthContext';
 import { fetchLicenseInfo, LicenseInfo } from '@/services/adminApi';
 
 const sectionMeta: Record<
@@ -53,6 +54,7 @@ const Dashboard = () => {
   const [editUserEmail, setEditUserEmail] = useState<string | null>(null);
   const header = sectionMeta[activeSection];
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const [licenseInfo, setLicenseInfo] = useState<LicenseInfo | null>(null);
   const [loadingLicenseInfo, setLoadingLicenseInfo] = useState(false);
   const [licenseError, setLicenseError] = useState<string | null>(null);
@@ -125,9 +127,21 @@ const Dashboard = () => {
             <h1 className="text-3xl font-semibold mt-2">{header.title}</h1>
             <p className="text-muted-foreground mt-2 max-w-2xl">{header.description}</p>
           </div>
-          <Button variant="outline" className="rounded-2xl border-muted/60" onClick={() => navigate('/')}>
-            ← Back to Chat
-          </Button>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
+            <Button variant="outline" className="rounded-2xl border-muted/60" onClick={() => navigate('/')}>
+              ← Back to Chat
+            </Button>
+            <Button
+              variant="destructive"
+              className="rounded-2xl"
+              onClick={() => {
+                logout();
+                navigate('/login');
+              }}
+            >
+              Logout
+            </Button>
+          </div>
         </header>
         {renderActiveSection()}
       </section>
