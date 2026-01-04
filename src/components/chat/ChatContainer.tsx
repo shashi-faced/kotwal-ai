@@ -77,7 +77,11 @@ interface SensitiveDataNotice {
   details?: PiiDetectionDetails;
   userMessage: string;
   timestamp: Date;
+  action: string;
 }
+
+const normalizeNoticeAction = (action?: string | null): string =>
+  typeof action === 'string' ? action.trim().toUpperCase() : '';
 
 const normalizeSessionMessages = (session: ChatSession): Message[] => {
   const rawMessages = (session.messages ?? []) as unknown[];
@@ -315,6 +319,7 @@ const ChatContainer = () => {
 
     if (!options.skipNotices) {
       setChatInputValue('');
+      setSensitiveNotices([]);
     }
     setIsTyping(true);
 
@@ -354,13 +359,18 @@ const ChatContainer = () => {
         if (!options.skipNotices && !options.overridePII) {
           console.log('Adding sensitive notice to state...');
           setSensitiveNotices((prev) => {
+            const action = normalizeNoticeAction(error.details?.action);
             const notice: SensitiveDataNotice = {
               message: error.message || 'Sensitive data found in message.',
               details: error.details,
               userMessage: content,
               timestamp: new Date(),
+              action,
             };
             console.log('New notice:', notice);
+            if (action === 'ALLOW') {
+              return prev;
+            }
             return [notice, ...prev].slice(0, 3);
           });
           setChatInputValue(content);
@@ -557,80 +567,93 @@ const ChatContainer = () => {
                 )}
               </div>
               <div className="space-y-4">
-                {sensitiveNotices.map((notice) => (
-                  <div
-                    key={notice.timestamp.getTime()}
-                    className="rounded-2xl border border-amber-200 bg-white/90 p-4 text-sm text-amber-900 shadow"
-                  >
-                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                      <div>
-                        <p className="font-medium">{notice.message}</p>
-                        {notice.details?.action && (
-                          <p className="text-xs text-amber-700">Action: {notice.details.action}</p>
-                        )}
+                {sensitiveNotices.map((notice) => {
+                  const action = normalizeNoticeAction(notice.action);
+                  const isBlock = action === 'BLOCK';
+                  const isWarn = action === 'WARN' || action === '';
+                  const cardBorder = isBlock ? 'border-red-200 bg-red-50 text-red-900' : 'border-amber-200 bg-white/90 text-amber-900';
+                  const badgeColor = isBlock ? 'text-red-600' : 'text-amber-600';
+                  const promptBg = isBlock ? 'bg-red-100/60 text-red-900' : 'bg-amber-100/60 text-amber-900';
+
+                  return (
+                    <div
+                      key={notice.timestamp.getTime()}
+                      className={`rounded-2xl border p-4 text-sm shadow ${cardBorder}`}
+                    >
+                      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold">Detected Sensitive Data</p>
+                          {action && (
+                            <p className={`text-xs font-semibold ${badgeColor}`}>
+                              Action: {action}
+                            </p>
+                          )}
+                        </div>
+                        <p className="text-xs font-medium">
+                          {isBlock
+                            ? 'This prompt is blocked. Remove sensitive data before continuing.'
+                            : 'Resolve or continue using the options below.'}
+                        </p>
                       </div>
-                      <p className="text-xs font-medium text-amber-800">Resolve or continue using the options below.</p>
-                    </div>
-                    <div className="mt-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-500">Blocked prompt</p>
-                      <div className="mt-1 rounded-xl bg-amber-100/60 p-3 font-mono text-xs leading-relaxed text-amber-900">
-                        {notice.userMessage}
+                      <div className="mt-3">
+                        <p className={`text-[11px] font-semibold uppercase tracking-wide ${badgeColor}`}>
+                          Blocked prompt
+                        </p>
+                        <div className={`mt-1 rounded-xl ${promptBg} p-3 font-mono text-xs leading-relaxed`}>
+                          {notice.userMessage}
+                        </div>
                       </div>
-                    </div>
-                    {notice.details?.findings?.length ? (
-                      <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50/70 p-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-500">Detected PII</p>
-                        <ul className="mt-2 grid gap-2 sm:grid-cols-2">
-                          {notice.details.findings.map((finding, index) => (
-                            <li
-                              key={`${finding.type ?? 'pii'}-${index}`}
-                              className="rounded-lg bg-white/80 p-2 text-xs"
+                      {notice.details?.findings?.length ? (
+                        <div className={`mt-3 rounded-xl border ${isBlock ? 'border-red-100 bg-red-50/60' : 'border-amber-100 bg-amber-50/70'} p-3`}>
+                          <ul className="mt-1 grid gap-2 sm:grid-cols-2">
+                            {notice.details.findings.map((finding, index) => (
+                              <li
+                                key={`${finding.type ?? 'pii'}-${index}`}
+                                className="rounded-lg bg-white/80 p-2 text-xs text-gray-800"
+                              >
+                                {finding.label ?? finding.type ?? 'Sensitive data'}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <p className={`text-[11px] sm:max-w-xs ${isBlock ? 'text-red-700' : 'text-amber-700'}`}>
+                          {isBlock
+                            ? 'Only editing is allowed. Proceed override is disabled for BLOCK actions.'
+                            : 'Only continue if you accept the risk. Proceeding will be logged for compliance review.'}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setChatInputValue(notice.userMessage);
+                              setTimeout(() => chatInputRef.current?.focus(), 0);
+                            }}
+                            className={`rounded-lg border px-3 py-1 text-xs font-semibold ${isBlock ? 'border-red-300 text-red-800 hover:bg-red-100' : 'border-amber-300 text-amber-800 hover:bg-amber-100'}`}
+                          >
+                            Edit prompt
+                          </button>
+                          {isWarn && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                dismissSensitiveNotice(notice.timestamp.getTime());
+                                await handleSendMessage(notice.userMessage, {
+                                  skipNotices: true,
+                                  overridePII: true,
+                                });
+                              }}
+                              className="inline-flex items-center justify-center rounded-lg bg-amber-600 px-3 py-1 text-xs font-semibold text-white shadow hover:bg-amber-700"
                             >
-                              <p className="font-medium">{finding.label ?? finding.type ?? 'Unknown'}</p>
-                              <p className="text-amber-700">
-                                {finding.type ? finding.type : 'Pattern'}{' '}
-                                {typeof finding.riskScore === 'number' ? `· Score ${finding.riskScore}` : ''}
-                              </p>
-                              {finding.layer && (
-                                <p className="text-[11px] uppercase tracking-wide text-amber-500">{finding.layer}</p>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
-                    <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <p className="text-[11px] text-amber-700 sm:max-w-xs">
-                        Only continue if you understand and accept the risk. Proceeding will be logged for compliance review.
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setChatInputValue(notice.userMessage);
-                            setTimeout(() => chatInputRef.current?.focus(), 0);
-                          }}
-                          className="rounded-lg border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100"
-                        >
-                          Edit prompt
-                        </button>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            dismissSensitiveNotice(notice.timestamp.getTime());
-                            await handleSendMessage(notice.userMessage, {
-                              skipNotices: true,
-                              overridePII: true,
-                            });
-                          }}
-                          className="inline-flex items-center justify-center rounded-lg bg-amber-600 px-3 py-1 text-xs font-semibold text-white shadow hover:bg-amber-700"
-                        >
-                          Proceed anyway
-                        </button>
+                              Proceed anyway
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
