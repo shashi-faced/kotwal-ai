@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Check, Copy } from 'lucide-react';
 
 interface CodeBlockProps {
@@ -22,10 +22,10 @@ const CodeBlock = ({ language, code }: CodeBlockProps) => {
   return (
     <div className="code-block-wrapper">
       <div className="code-block-header">
-        <span className="text-muted-foreground">{displayLanguage}</span>
+        <span className="font-medium">{displayLanguage}</span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+          className="flex items-center gap-1.5 hover:text-black transition-colors"
         >
           {copied ? (
             <>
@@ -42,7 +42,7 @@ const CodeBlock = ({ language, code }: CodeBlockProps) => {
       </div>
       <SyntaxHighlighter
         language={language || 'text'}
-        style={oneDark}
+        style={vs}
         customStyle={{
           margin: 0,
           padding: '1rem',

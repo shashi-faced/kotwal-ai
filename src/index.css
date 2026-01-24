@@ -102,8 +102,9 @@
     --chat-user-border: 210 24% 88%;
     --chat-assistant-bg: 220 28% 94%;
     --chat-assistant-border: 220 20% 82%;
-    --chat-code-bg: 218 35% 92%;
-    --chat-code-header: 219 32% 88%;
+    /* Light code blocks for clean aesthetic */
+    --chat-code-bg: 0 0% 98%;
+    --chat-code-header: 210 40% 96.1%;
     --chat-input-bg: 0 0% 100%;
     --chat-input-border: 215 24% 88%;
     --chat-hover: 216 32% 95%;
@@ -174,72 +175,19 @@
 }
 
 @layer components {
-  .chat-message {
-    @apply px-6 py-4;
-    color: #0f172a;
-  }
+  /* Removed unused message styles to match ChatGPT clean aesthetic */
 
-  .message-bubble {
-    border-radius: 1.5rem;
-    border: 1px solid hsl(var(--border));
-    padding: 1.35rem;
-    box-shadow: 0 15px 35px rgba(15, 23, 42, 0.08);
-    transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
-    color: #0f172a;
-    background-color: #fff;
-  }
-
-  .message-bubble :where(p, li, span, code, strong, em, a, h1, h2, h3, h4) {
-    color: inherit;
-  }
-
-  .message-bubble :where(*, .text-foreground) {
-    color: inherit !important;
-  }
-
-  .message-bubble:hover {
-    border-color: hsl(var(--ring));
-    box-shadow: 0 25px 60px rgba(15, 23, 42, 0.12);
-    transform: translateY(-1px);
-  }
-
-  .chat-message-user {
-    background: transparent;
-    color: #000;
-  }
-
-  .chat-message-user .message-bubble {
-    background-color: #ffffff;
-    border-color: hsl(var(--chat-user-border, var(--border)));
-    color: #0f172a;
-  }
-
-  .chat-message-assistant {
-    background: transparent;
-  }
-
-  .chat-message-assistant .message-bubble {
-    background-color: #f5f7fb;
-    border-color: hsl(var(--chat-assistant-border, var(--border)));
-    color: #0f172a;
-  }
-
-  .transcript-gradient {
-    border-radius: 2rem;
-    background-color: rgba(255, 255, 255, 0.95);
-    border: 1px solid hsla(var(--border), 0.7);
-    box-shadow: 0 35px 70px rgba(15, 23, 42, 0.08);
-    color: #0f172a;
-  }
 
   .code-block-wrapper {
     @apply rounded-lg overflow-hidden my-4;
     background: hsl(var(--chat-code-bg));
+    border: 1px solid hsl(var(--border));
   }
 
   .code-block-header {
     @apply flex items-center justify-between px-4 py-2 text-xs;
     background: hsl(var(--chat-code-header));
+    border-bottom: 1px solid hsl(var(--border));
   }
 
   .prose-chat {
@@ -323,6 +271,7 @@
       opacity: 0;
       transform: translateY(10px);
     }
+
     to {
       opacity: 1;
       transform: translateY(0);
@@ -338,6 +287,7 @@
       opacity: 0;
       transform: translateX(-100%);
     }
+
     to {
       opacity: 1;
       transform: translateX(0);
