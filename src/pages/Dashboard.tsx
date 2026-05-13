@@ -8,6 +8,7 @@ import EditUserSection from '@/components/dashboard/sections/EditUserSection';
 import ChatModelsSection from '@/components/dashboard/sections/ChatModelsSection';
 import BillingSection from '@/components/dashboard/sections/BillingSection';
 import SecuritySection from '@/components/dashboard/sections/SecuritySection';
+import PolicySection from '@/components/dashboard/sections/PolicySection';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { fetchLicenseInfo, LicenseInfo } from '@/services/adminApi';
@@ -46,6 +47,10 @@ const sectionMeta: Record<
   security: {
     title: 'Security Alerts',
     description: 'Respond to anomalous activity detected by Kotwal.',
+  },
+  policy: {
+    title: 'Detection Policy',
+    description: 'Tune severity, actions, redaction strategy, and allowlists per category.',
   },
 };
 
@@ -112,6 +117,8 @@ const Dashboard = () => {
         return <BillingSection />;
       case 'security':
         return <SecuritySection />;
+      case 'policy':
+        return <PolicySection />;
       default:
         return <OverviewSection />;
     }

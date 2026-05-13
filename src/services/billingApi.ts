@@ -1,6 +1,12 @@
+/**
+ * Billing API service.
+ *
+ * Migrated to apiFetch / apiJson — see services/adminApi.ts header for the
+ * full rationale. The legacy `authToken` parameter is preserved for source
+ * compatibility but ignored; token resolution lives in apiFetch.
+ */
 import { API_URLS } from '@/lib/url';
-import { handleUnauthorized } from '@/lib/session';
-import { getStoredToken } from '@/lib/authStorage';
+import { apiJson, ApiError } from '@/lib/apiClient';
 
 export interface BillingRecord {
   id: string;
@@ -33,103 +39,58 @@ export interface BillingStatementAggregatePayload {
   periodEnd: string;
 }
 
-const buildHeaders = (token?: string) => ({
-  'Content-Type': 'application/json',
-  ...(token ? { Authorization: `Bearer ${token}` } : {}),
-});
-
-export const fetchBillingRecords = async (authToken?: string): Promise<BillingRecord[]> => {
-  const token = authToken ?? getStoredToken();
-  const response = await fetch(API_URLS.billing.records, {
-    method: 'GET',
-    headers: buildHeaders(token),
-  });
-
-  if (response.status === 401) {
-    handleUnauthorized();
-    return [];
+const okOrNull = async <T>(p: Promise<T>): Promise<T | null> => {
+  try { return await p; } catch (err) {
+    if (err instanceof ApiError && err.status === 401) return null;
+    throw err;
   }
+};
 
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    throw new Error(errorBody?.message || 'Failed to fetch billing records');
+export const fetchBillingRecords = async (_authToken?: string): Promise<BillingRecord[]> => {
+  void _authToken;
+  try {
+    const data = await apiJson<{ records?: BillingRecord[] } | BillingRecord[]>(
+      API_URLS.billing.records, { method: 'GET' },
+    );
+    if (Array.isArray(data)) return data;
+    return data.records ?? [];
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) return [];
+    throw err;
   }
-
-  const data = (await response.json()) as { records?: BillingRecord[] } | BillingRecord[];
-
-  if (Array.isArray(data)) return data;
-  return data.records ?? [];
 };
 
 export const fetchBillingAggregate = async (
   payload: BillingAggregatePayload,
-  authToken?: string,
+  _authToken?: string,
 ): Promise<BillingAggregate | null> => {
-  const token = authToken ?? getStoredToken();
-  const response = await fetch(API_URLS.billing.aggregate, {
-    method: 'POST',
-    headers: buildHeaders(token),
-    body: JSON.stringify(payload),
-  });
-
-  if (response.status === 401) {
-    handleUnauthorized();
-    return null;
-  }
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    throw new Error(errorBody?.message || 'Failed to fetch billing aggregate');
-  }
-
-  return (await response.json()) as BillingAggregate;
+  void _authToken;
+  return okOrNull(apiJson<BillingAggregate>(
+    API_URLS.billing.aggregate, { method: 'POST', body: payload },
+  ));
 };
 
 export const fetchBillingStatementAggregate = async (
   payload: BillingStatementAggregatePayload,
-  authToken?: string,
+  _authToken?: string,
 ): Promise<BillingRecord | null> => {
-  const token = authToken ?? getStoredToken();
-  const response = await fetch(API_URLS.billing.aggregate, {
-    method: 'POST',
-    headers: buildHeaders(token),
-    body: JSON.stringify(payload),
-  });
-
-  if (response.status === 401) {
-    handleUnauthorized();
-    return null;
-  }
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    throw new Error(errorBody?.message || 'Failed to fetch billing aggregate record');
-  }
-
-  const data = (await response.json().catch(() => null)) as { record?: BillingRecord } | BillingRecord | null;
-  if (data && typeof data === 'object' && 'record' in data) {
-    return (data as { record?: BillingRecord }).record ?? null;
-  }
-
-  return (data as BillingRecord | null) ?? null;
+  void _authToken;
+  return okOrNull((async () => {
+    const data = await apiJson<{ record?: BillingRecord } | BillingRecord | null>(
+      API_URLS.billing.aggregate, { method: 'POST', body: payload },
+    );
+    if (data && typeof data === 'object' && 'record' in data) {
+      return (data as { record?: BillingRecord }).record ?? null;
+    }
+    return (data as BillingRecord | null) ?? null;
+  })()) as Promise<BillingRecord | null>;
 };
 
-export const fetchBillingAggregateMonthly = async (authToken?: string): Promise<BillingAggregate | null> => {
-  const token = authToken ?? getStoredToken();
-  const response = await fetch(API_URLS.billing.aggregateMonthly, {
-    method: 'POST',
-    headers: buildHeaders(token),
-  });
-
-  if (response.status === 401) {
-    handleUnauthorized();
-    return null;
-  }
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    throw new Error(errorBody?.message || 'Failed to fetch monthly billing aggregate');
-  }
-
-  return (await response.json()) as BillingAggregate;
+export const fetchBillingAggregateMonthly = async (
+  _authToken?: string,
+): Promise<BillingAggregate | null> => {
+  void _authToken;
+  return okOrNull(apiJson<BillingAggregate>(
+    API_URLS.billing.aggregateMonthly, { method: 'POST' },
+  ));
 };

@@ -1,41 +1,47 @@
-export const AUTH_STORAGE_KEY = 'kotwal_auth_state';
+/**
+ * Lightweight client-side cache for *non-sensitive* user info (email, role).
+ *
+ * Tokens are NEVER stored here. Auth tokens live only in memory (tokenStore.ts);
+ * the refresh token is in an httpOnly cookie set by the server.
+ *
+ * The cached user info is purely a UX optimisation so the navbar doesn't flash
+ * empty between page reload and the bootstrap /refresh call completing. It
+ * is not a source of truth and is overwritten on every successful login or
+ * /me fetch.
+ */
+const STORAGE_KEY = 'kotwal_user';
 
-export type StoredAuthState = {
-  isAuthenticated: boolean;
-  email?: string;
-  token?: string;
+export interface CachedUser {
+  email: string;
   role?: string;
-};
+  name?: string;
+}
 
-const hasWindow = () => typeof window !== 'undefined' && !!window.localStorage;
+const hasStorage = () => typeof window !== 'undefined' && !!window.sessionStorage;
 
-export const loadAuthState = (): StoredAuthState | null => {
-  if (!hasWindow()) return null;
+export const loadCachedUser = (): CachedUser | null => {
+  if (!hasStorage()) return null;
   try {
-    const stored = window.localStorage.getItem(AUTH_STORAGE_KEY);
-    return stored ? (JSON.parse(stored) as StoredAuthState) : null;
-  } catch (error) {
-    console.error('Failed to read auth state from storage', error);
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as CachedUser) : null;
+  } catch {
     return null;
   }
 };
 
-export const persistAuthState = (state: StoredAuthState) => {
-  if (!hasWindow()) return;
+export const cacheUser = (user: CachedUser | null) => {
+  if (!hasStorage()) return;
   try {
-    window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(state));
-  } catch (error) {
-    console.error('Failed to persist auth state', error);
+    if (!user) window.sessionStorage.removeItem(STORAGE_KEY);
+    else window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+  } catch {
+    /* ignore */
   }
 };
 
-export const clearAuthState = () => {
-  if (!hasWindow()) return;
-  try {
-    window.localStorage.removeItem(AUTH_STORAGE_KEY);
-  } catch (error) {
-    console.error('Failed to clear auth state', error);
-  }
-};
+export const clearCachedUser = () => cacheUser(null);
 
-export const getStoredToken = (): string | null => loadAuthState()?.token ?? null;
+// --- Back-compat exports kept so adminApi/billingApi keep building ---
+export { getStoredToken } from './tokenStore';
+export const AUTH_STORAGE_KEY = STORAGE_KEY;
+export const clearAuthState = clearCachedUser;

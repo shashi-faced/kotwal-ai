@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Users, UserPlus, Pencil, Bot, CreditCard, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Users, UserPlus, Pencil, Bot, CreditCard, ShieldCheck, FileText } from 'lucide-react';
 
 export type DashboardSection =
   | 'overview'
@@ -8,7 +8,8 @@ export type DashboardSection =
   | 'edit-user'
   | 'chat-models'
   | 'billing'
-  | 'security';
+  | 'security'
+  | 'policy';
 
 interface DashboardSidebarProps {
   activeSection: DashboardSection;
@@ -31,6 +32,7 @@ const DashboardSidebar = ({ activeSection, onSelect }: DashboardSidebarProps) =>
     { id: 'chat-models', label: 'Manage Chat Models', icon: Bot },
     { id: 'billing', label: 'Manage Billing', icon: CreditCard },
     { id: 'security', label: 'View Security Alerts', icon: ShieldCheck },
+    { id: 'policy', label: 'Detection Policy', icon: FileText },
   ];
 
   return (

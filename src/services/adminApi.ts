@@ -1,6 +1,18 @@
+/**
+ * Admin / dashboard API service.
+ *
+ * Migrated to the central apiFetch / apiJson client which:
+ *   - sends the in-memory access token,
+ *   - includes the httpOnly refresh-token cookie,
+ *   - transparently refreshes on 401 and replays the request,
+ *   - bounces to /login only when refresh fails.
+ *
+ * The optional `_authToken` argument is preserved on each function for
+ * source-compatibility with existing callers but is ignored — token resolution
+ * is centralised in apiFetch.
+ */
 import { API_URLS } from '@/lib/url';
-import { handleUnauthorized } from '@/lib/session';
-import { getStoredToken } from '@/lib/authStorage';
+import { apiFetch, apiJson, ApiError } from '@/lib/apiClient';
 
 export interface LicenseInfo {
   availableLicenses: number;
@@ -106,266 +118,157 @@ export interface UpdateAdminUserPayload {
   permissions?: string[];
 }
 
-export interface UpdateAdminUserResponse {
-  message: string;
-}
+export interface UpdateAdminUserResponse { message: string; }
+export interface DeleteAdminUserResponse { message: string; }
 
-export interface DeleteAdminUserResponse {
-  message: string;
-}
-
-interface ApiErrorBody {
-  message?: string;
-}
-
-const buildHeaders = (token?: string) => ({
-  'Content-Type': 'application/json',
-  ...(token ? { Authorization: `Bearer ${token}` } : {}),
-});
-
-const parseErrorMessage = (body: ApiErrorBody | Record<string, never>, fallback: string) =>
-  (body as ApiErrorBody).message || fallback;
-
-export const fetchLicenseInfo = async (authToken?: string): Promise<LicenseInfo | null> => {
-  const token = authToken ?? getStoredToken();
-
-  const response = await fetch(API_URLS.admin.licenseInfo, {
-    method: 'GET',
-    headers: buildHeaders(token),
-  });
-
-  if (response.status === 401) {
-    handleUnauthorized();
-    return null;
+const okOrEmptyArray = async <T>(p: Promise<T[]>): Promise<T[]> => {
+  try { return await p; } catch (err) {
+    if (err instanceof ApiError && err.status === 401) return [];
+    throw err;
   }
-
-  if (!response.ok) {
-    const errorBody = (await response.json().catch(() => ({}))) as ApiErrorBody | Record<string, never>;
-    throw new Error(parseErrorMessage(errorBody, 'Failed to fetch license info'));
-  }
-
-  const data = (await response.json()) as LicenseInfo;
-  return data;
 };
 
-export const fetchDashboardUsers = async (authToken?: string): Promise<DashboardUser[]> => {
-  const token = authToken ?? getStoredToken();
-
-  const response = await fetch(API_URLS.dashboard.users, {
-    method: 'GET',
-    headers: buildHeaders(token),
-  });
-
-  if (response.status === 401) {
-    handleUnauthorized();
-    return [];
+const okOrNull = async <T>(p: Promise<T>): Promise<T | null> => {
+  try { return await p; } catch (err) {
+    if (err instanceof ApiError && err.status === 401) return null;
+    throw err;
   }
-
-  if (!response.ok) {
-    const errorBody = (await response.json().catch(() => ({}))) as ApiErrorBody | Record<string, never>;
-    throw new Error(parseErrorMessage(errorBody, 'Failed to fetch users'));
-  }
-
-  const data = (await response.json().catch(() => ({}))) as { users?: DashboardUser[] } | DashboardUser[];
-
-  if (Array.isArray(data)) return data;
-  return data.users ?? [];
 };
 
-export const fetchDashboardSummary = async (authToken?: string): Promise<DashboardSummary | null> => {
-  const token = authToken ?? getStoredToken();
+// --- License --------------------------------------------------------------
 
-  const response = await fetch(API_URLS.dashboard.summary, {
-    method: 'GET',
-    headers: buildHeaders(token),
-  });
+export const fetchLicenseInfo = async (_authToken?: string): Promise<LicenseInfo | null> => {
+  void _authToken;
+  return okOrNull(apiJson<LicenseInfo>(API_URLS.admin.licenseInfo, { method: 'GET' }));
+};
 
-  if (response.status === 401) {
-    handleUnauthorized();
-    return null;
-  }
+// --- Users (dashboard scope) ---------------------------------------------
 
-  if (!response.ok) {
-    const errorBody = (await response.json().catch(() => ({}))) as ApiErrorBody | Record<string, never>;
-    throw new Error(parseErrorMessage(errorBody, 'Failed to fetch dashboard summary'));
-  }
+export const fetchDashboardUsers = async (_authToken?: string): Promise<DashboardUser[]> => {
+  void _authToken;
+  return okOrEmptyArray((async () => {
+    const data = await apiJson<{ users?: DashboardUser[] } | DashboardUser[]>(
+      API_URLS.dashboard.users, { method: 'GET' },
+    );
+    return Array.isArray(data) ? data : (data.users ?? []);
+  })());
+};
 
-  const data = (await response.json().catch(() => ({}))) as DashboardSummary | Record<string, never>;
-
-  return {
-    activeUsers: Number((data as DashboardSummary).activeUsers ?? 0),
-    chatsToday: Number((data as DashboardSummary).chatsToday ?? 0),
-    alerts: Number((data as DashboardSummary).alerts ?? 0),
-    spend: Number((data as DashboardSummary).spend ?? 0),
-  };
+export const fetchDashboardSummary = async (_authToken?: string): Promise<DashboardSummary | null> => {
+  void _authToken;
+  return okOrNull((async () => {
+    const data = await apiJson<DashboardSummary | Record<string, never>>(
+      API_URLS.dashboard.summary, { method: 'GET' },
+    );
+    return {
+      activeUsers: Number((data as DashboardSummary).activeUsers ?? 0),
+      chatsToday: Number((data as DashboardSummary).chatsToday ?? 0),
+      alerts: Number((data as DashboardSummary).alerts ?? 0),
+      spend: Number((data as DashboardSummary).spend ?? 0),
+    };
+  })());
 };
 
 export const fetchDashboardAlerts = async (
   query?: DashboardAlertsQuery,
-  authToken?: string
+  _authToken?: string,
 ): Promise<DashboardAlertsResponse | null> => {
-  const token = authToken ?? getStoredToken();
-
-  const baseUrl = API_URLS.dashboard.alerts;
-  const url = new URL(baseUrl);
-
+  void _authToken;
+  const url = new URL(API_URLS.dashboard.alerts);
   if (query) {
-    const params = new URLSearchParams();
-    if (typeof query.piiFlag === 'boolean') params.set('piiFlag', String(query.piiFlag));
-    if (typeof query.override === 'boolean') params.set('override', String(query.override));
-    if (typeof query.riskScoreMin === 'number') params.set('riskScoreMin', String(query.riskScoreMin));
-    if (typeof query.riskScoreMax === 'number') params.set('riskScoreMax', String(query.riskScoreMax));
-    if (query.date) params.set('date', query.date);
-    if (query.dateStart) params.set('dateStart', query.dateStart);
-    if (query.dateEnd) params.set('dateEnd', query.dateEnd);
-    if (typeof query.offset === 'number') params.set('offset', String(query.offset));
-    if (typeof query.limit === 'number') params.set('limit', String(query.limit));
-    if (query.sortBy) params.set('sortBy', query.sortBy);
-    if (query.sortOrder) params.set('sortOrder', query.sortOrder);
-
-    url.search = params.toString();
+    const p = new URLSearchParams();
+    if (typeof query.piiFlag === 'boolean') p.set('piiFlag', String(query.piiFlag));
+    if (typeof query.override === 'boolean') p.set('override', String(query.override));
+    if (typeof query.riskScoreMin === 'number') p.set('riskScoreMin', String(query.riskScoreMin));
+    if (typeof query.riskScoreMax === 'number') p.set('riskScoreMax', String(query.riskScoreMax));
+    if (query.date) p.set('date', query.date);
+    if (query.dateStart) p.set('dateStart', query.dateStart);
+    if (query.dateEnd) p.set('dateEnd', query.dateEnd);
+    if (typeof query.offset === 'number') p.set('offset', String(query.offset));
+    if (typeof query.limit === 'number') p.set('limit', String(query.limit));
+    if (query.sortBy) p.set('sortBy', query.sortBy);
+    if (query.sortOrder) p.set('sortOrder', query.sortOrder);
+    url.search = p.toString();
   }
 
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: buildHeaders(token),
-  });
-
-  if (response.status === 401) {
-    handleUnauthorized();
-    return null;
-  }
-
-  if (!response.ok) {
-    const errorBody = (await response.json().catch(() => ({}))) as ApiErrorBody | Record<string, never>;
-    throw new Error(parseErrorMessage(errorBody, 'Failed to fetch alerts'));
-  }
-
-  const data = (await response.json().catch(() => ({}))) as DashboardAlertsResponse | Record<string, never>;
-
-  const counts = (data as DashboardAlertsResponse).counts;
-  const alerts = (data as DashboardAlertsResponse).alerts ?? [];
-  const pagination = (data as DashboardAlertsResponse).pagination;
-
-  return {
-    counts: {
-      piiFlagCounts: counts?.piiFlagCounts ?? {},
-      overrideCounts: counts?.overrideCounts ?? {},
-      highRisk: Number(counts?.highRisk ?? 0),
-      medRisk: Number(counts?.medRisk ?? 0),
-      lowRisk: Number(counts?.lowRisk ?? 0),
-      overrideCount: Number(counts?.overrideCount ?? 0),
-      piiCount: Number(counts?.piiCount ?? 0),
-    },
-    alerts,
-    pagination: pagination ?? { limit: alerts.length, offset: 0, total: alerts.length },
-  };
+  return okOrNull((async () => {
+    const data = await apiJson<DashboardAlertsResponse | Record<string, never>>(
+      url.toString(), { method: 'GET' },
+    );
+    const counts = (data as DashboardAlertsResponse).counts;
+    const alerts = (data as DashboardAlertsResponse).alerts ?? [];
+    const pagination = (data as DashboardAlertsResponse).pagination;
+    return {
+      counts: {
+        piiFlagCounts: counts?.piiFlagCounts ?? {},
+        overrideCounts: counts?.overrideCounts ?? {},
+        highRisk: Number(counts?.highRisk ?? 0),
+        medRisk: Number(counts?.medRisk ?? 0),
+        lowRisk: Number(counts?.lowRisk ?? 0),
+        overrideCount: Number(counts?.overrideCount ?? 0),
+        piiCount: Number(counts?.piiCount ?? 0),
+      },
+      alerts,
+      pagination: pagination ?? { limit: alerts.length, offset: 0, total: alerts.length },
+    };
+  })());
 };
+
+// --- Admin user management -----------------------------------------------
 
 export const createAdminUser = async (
   payload: CreateUserPayload,
-  authToken?: string
+  _authToken?: string,
 ): Promise<CreateUserResponse> => {
-  const token = authToken ?? getStoredToken();
-
-  const response = await fetch(API_URLS.admin.createUser, {
-    method: 'POST',
-    headers: buildHeaders(token),
-    body: JSON.stringify(payload),
-  });
-
-  if (response.status === 401) {
-    handleUnauthorized();
-    throw new Error('Session expired. Please log in again.');
-  }
-
-  if (!response.ok) {
-    const errorBody = (await response.json().catch(() => ({}))) as ApiErrorBody | Record<string, never>;
-    throw new Error(parseErrorMessage(errorBody, 'Failed to create user'));
-  }
-
-  const data = (await response.json().catch(() => ({}))) as CreateUserResponse | Record<string, never>;
-  return {
-    message: (data as CreateUserResponse).message ?? 'User created successfully.',
-  };
+  void _authToken;
+  const data = await apiJson<CreateUserResponse | Record<string, never>>(
+    API_URLS.admin.createUser, { method: 'POST', body: payload },
+  );
+  return { message: (data as CreateUserResponse).message ?? 'User created successfully.' };
 };
 
 export const fetchAdminUserByEmail = async (
   email: string,
-  authToken?: string
+  _authToken?: string,
 ): Promise<AdminUserDetails> => {
-  const token = authToken ?? getStoredToken();
-
-  const response = await fetch(`${API_URLS.admin.userDetails}/${encodeURIComponent(email)}`, {
-    method: 'GET',
-    headers: buildHeaders(token),
-  });
-
-  if (response.status === 401) {
-    handleUnauthorized();
-    throw new Error('Session expired. Please log in again.');
-  }
-
-  if (!response.ok) {
-    const errorBody = (await response.json().catch(() => ({}))) as ApiErrorBody | Record<string, never>;
-    throw new Error(parseErrorMessage(errorBody, 'User not found.'));
-  }
-
-  const data = (await response.json()) as AdminUserDetails;
-  return data;
+  void _authToken;
+  return apiJson<AdminUserDetails>(
+    `${API_URLS.admin.userDetails}/${encodeURIComponent(email)}`,
+    { method: 'GET' },
+  );
 };
 
 export const updateAdminUser = async (
   payload: UpdateAdminUserPayload,
-  authToken?: string
+  _authToken?: string,
 ): Promise<UpdateAdminUserResponse> => {
-  const token = authToken ?? getStoredToken();
-
-  const response = await fetch(API_URLS.admin.userDetails, {
-    method: 'PUT',
-    headers: buildHeaders(token),
-    body: JSON.stringify(payload),
-  });
-
-  if (response.status === 401) {
-    handleUnauthorized();
-    throw new Error('Session expired. Please log in again.');
-  }
-
-  if (!response.ok) {
-    const errorBody = (await response.json().catch(() => ({}))) as ApiErrorBody | Record<string, never>;
-    throw new Error(parseErrorMessage(errorBody, 'Failed to update user'));
-  }
-
-  const data = (await response.json().catch(() => ({}))) as UpdateAdminUserResponse | Record<string, never>;
-  return {
-    message: (data as UpdateAdminUserResponse).message ?? 'User updated successfully.',
-  };
+  void _authToken;
+  // Backend route is PUT /api/auth/admin/users/:email
+  const { email, ...rest } = payload;
+  const data = await apiJson<UpdateAdminUserResponse | Record<string, never>>(
+    `${API_URLS.admin.userDetails}/${encodeURIComponent(email)}`,
+    { method: 'PUT', body: rest },
+  );
+  return { message: (data as UpdateAdminUserResponse).message ?? 'User updated successfully.' };
 };
 
 export const deleteAdminUser = async (
   email: string,
-  authToken?: string
+  _authToken?: string,
 ): Promise<DeleteAdminUserResponse> => {
-  const token = authToken ?? getStoredToken();
-
-  const response = await fetch(`${API_URLS.dashboard.deleteUser}/${encodeURIComponent(email)}`, {
-    method: 'DELETE',
-    headers: buildHeaders(token),
-  });
-
-  if (response.status === 401) {
-    handleUnauthorized();
-    throw new Error('Session expired. Please log in again.');
+  void _authToken;
+  const res = await apiFetch(
+    `${API_URLS.dashboard.deleteUser}/${encodeURIComponent(email)}`,
+    { method: 'DELETE' },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(
+      (body as { error?: string })?.error || 'Failed to delete user',
+      res.status,
+      body,
+    );
   }
-
-  if (!response.ok) {
-    const errorBody = (await response.json().catch(() => ({}))) as ApiErrorBody | Record<string, never>;
-    throw new Error(parseErrorMessage(errorBody, 'Failed to delete user'));
-  }
-
-  const data = (await response.json().catch(() => ({}))) as DeleteAdminUserResponse | Record<string, never>;
-  return {
-    message: (data as DeleteAdminUserResponse).message ?? 'User deleted successfully.',
-  };
+  const data = (await res.json().catch(() => ({}))) as DeleteAdminUserResponse | Record<string, never>;
+  return { message: (data as DeleteAdminUserResponse).message ?? 'User deleted successfully.' };
 };

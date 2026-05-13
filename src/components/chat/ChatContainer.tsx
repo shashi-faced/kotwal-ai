@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ShieldAlert, Share2, UserPlus, MoreHorizontal } from 'lucide-react';
+import { ShieldAlert, ShieldCheck } from 'lucide-react';
 import { Message, Conversation } from '@/types/chat';
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
@@ -12,8 +12,9 @@ import {
   fetchChatSessions,
   ChatModel,
   ChatSession,
-  SensitiveDataBlockedError,
-  PiiDetectionDetails,
+  SensitiveDataInterceptError,
+  DetectionInterceptBody,
+  DetectionFinding,
 } from '@/services/chatApi';
 import { toast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
@@ -23,46 +24,22 @@ const generateSessionId = () => {
   if (typeof window !== 'undefined' && window.crypto?.randomUUID) {
     return window.crypto.randomUUID();
   }
-
   const bytes = new Uint8Array(16);
   if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
     window.crypto.getRandomValues(bytes);
   } else {
-    for (let i = 0; i < bytes.length; i += 1) {
-      bytes[i] = Math.floor(Math.random() * 256);
-    }
+    for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
   }
-
-  // Set UUID version (4) and variant bits.
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
-
-  const byteToHex: string[] = [];
-  for (let i = 0; i < 256; i += 1) {
-    byteToHex.push(i.toString(16).padStart(2, '0'));
-  }
-
+  const h: string[] = [];
+  for (let i = 0; i < 256; i += 1) h.push(i.toString(16).padStart(2, '0'));
   return (
-    byteToHex[bytes[0]] +
-    byteToHex[bytes[1]] +
-    byteToHex[bytes[2]] +
-    byteToHex[bytes[3]] +
-    '-' +
-    byteToHex[bytes[4]] +
-    byteToHex[bytes[5]] +
-    '-' +
-    byteToHex[bytes[6]] +
-    byteToHex[bytes[7]] +
-    '-' +
-    byteToHex[bytes[8]] +
-    byteToHex[bytes[9]] +
-    '-' +
-    byteToHex[bytes[10]] +
-    byteToHex[bytes[11]] +
-    byteToHex[bytes[12]] +
-    byteToHex[bytes[13]] +
-    byteToHex[bytes[14]] +
-    byteToHex[bytes[15]]
+    h[bytes[0]] + h[bytes[1]] + h[bytes[2]] + h[bytes[3]] + '-' +
+    h[bytes[4]] + h[bytes[5]] + '-' +
+    h[bytes[6]] + h[bytes[7]] + '-' +
+    h[bytes[8]] + h[bytes[9]] + '-' +
+    h[bytes[10]] + h[bytes[11]] + h[bytes[12]] + h[bytes[13]] + h[bytes[14]] + h[bytes[15]]
   );
 };
 
@@ -72,69 +49,47 @@ const FALLBACK_MODELS: { value: string; label: string }[] = [
   { value: 'fallback-ultra', label: 'Kotwal Ultra · Detailed' },
 ];
 
-interface SensitiveDataNotice {
-  message: string;
-  details?: PiiDetectionDetails;
+interface DetectionNotice {
+  id: string;
+  /** The user's original prompt — kept locally to power "Edit" + "Proceed". */
   userMessage: string;
+  details: DetectionInterceptBody;
   timestamp: Date;
-  action: string;
 }
 
-const normalizeNoticeAction = (action?: string | null): string =>
-  typeof action === 'string' ? action.trim().toUpperCase() : '';
+const formatScore = (score?: number) => (typeof score === 'number' ? Math.round(score * 100) : null);
+
+const formatFindingLabel = (f: DetectionFinding): string => {
+  const subtype = (f.subtype || '').replace(/_/g, ' ').toLowerCase();
+  const category = (f.category || '').replace(/_/g, ' ').toLowerCase();
+  const label = subtype || category || 'sensitive data';
+  return label.replace(/\b\w/g, (c) => c.toUpperCase());
+};
 
 const normalizeSessionMessages = (session: ChatSession): Message[] => {
   const rawMessages = (session.messages ?? []) as unknown[];
   if (!rawMessages.length) return [];
-
-  const normalized: Message[] = [];
+  const out: Message[] = [];
   rawMessages.forEach((entry, index) => {
     if (!entry || typeof entry !== 'object') return;
-    const record = entry as Record<string, unknown>;
-    const baseId =
-      (typeof record.id === 'string' && record.id) || `${session.sessionId}-${index}`;
-    const timestampSource =
-      record.timestamp ??
-      record.updatedAt ??
-      record.createdAt ??
-      new Date();
-    const timestamp =
-      timestampSource instanceof Date
-        ? timestampSource
-        : typeof timestampSource === 'string'
-          ? new Date(timestampSource)
-          : new Date();
+    const r = entry as Record<string, unknown>;
+    const baseId = (typeof r.id === 'string' && r.id) || `${session.sessionId}-${index}`;
+    const tsSrc = r.timestamp ?? r.updatedAt ?? r.createdAt ?? new Date();
+    const ts = tsSrc instanceof Date ? tsSrc : typeof tsSrc === 'string' ? new Date(tsSrc) : new Date();
 
-    if ('role' in record && (record.role === 'user' || record.role === 'assistant')) {
-      normalized.push({
-        id: typeof record.id === 'string' ? record.id : baseId,
-        role: record.role as 'user' | 'assistant',
-        content: typeof record.content === 'string' ? record.content : '',
-        timestamp,
+    if ('role' in r && (r.role === 'user' || r.role === 'assistant')) {
+      out.push({
+        id: typeof r.id === 'string' ? r.id : baseId,
+        role: r.role as 'user' | 'assistant',
+        content: typeof r.content === 'string' ? r.content : '',
+        timestamp: ts,
       });
       return;
     }
-
-    if (typeof record.message === 'string') {
-      normalized.push({
-        id: `${baseId}-user`,
-        role: 'user',
-        content: record.message,
-        timestamp,
-      });
-    }
-
-    if (typeof record.response === 'string') {
-      normalized.push({
-        id: `${baseId}-assistant`,
-        role: 'assistant',
-        content: record.response,
-        timestamp,
-      });
-    }
+    if (typeof r.message === 'string') out.push({ id: `${baseId}-user`, role: 'user', content: r.message, timestamp: ts });
+    if (typeof r.response === 'string') out.push({ id: `${baseId}-assistant`, role: 'assistant', content: r.response, timestamp: ts });
   });
-
-  return normalized;
+  return out;
 };
 
 const ChatContainer = () => {
@@ -145,9 +100,9 @@ const ChatContainer = () => {
   const [modelOptions, setModelOptions] = useState(FALLBACK_MODELS);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState(FALLBACK_MODELS[0].value);
-  const [historyLoading, setHistoryLoading] = useState(false);
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
-  const [sensitiveNotices, setSensitiveNotices] = useState<SensitiveDataNotice[]>([]);
+  const [notices, setNotices] = useState<DetectionNotice[]>([]);
+  const [overrideReasonByNotice, setOverrideReasonByNotice] = useState<Record<string, string>>({});
   const [chatInputValue, setChatInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
@@ -161,23 +116,18 @@ const ChatContainer = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [activeConversation?.messages, scrollToBottom]);
+  useEffect(() => { scrollToBottom(); }, [activeConversation?.messages, scrollToBottom]);
 
   const mapSessionToConversation = useCallback((session: ChatSession): Conversation => {
     const fallbackTitle =
       session.lastMessageAt || session.startedAt
         ? new Date(session.lastMessageAt ?? session.startedAt ?? new Date()).toLocaleString()
         : 'Previous chat';
-
-    const normalizedMessages = normalizeSessionMessages(session);
-
     return {
       id: session.sessionId,
       sessionId: session.sessionId,
       title: session.title?.trim() || fallbackTitle,
-      messages: normalizedMessages,
+      messages: normalizeSessionMessages(session),
       createdAt: session.startedAt ? new Date(session.startedAt) : new Date(),
       updatedAt: session.lastMessageAt ? new Date(session.lastMessageAt) : new Date(),
     };
@@ -186,58 +136,39 @@ const ChatContainer = () => {
   useEffect(() => {
     if (!token) return;
     let isMounted = true;
-
-    const loadModels = async () => {
+    (async () => {
       setModelsLoading(true);
       try {
-        const models = await fetchChatModels(token);
+        const models = await fetchChatModels();
         if (!isMounted || !models.length) return;
-
-        const options = models.map((model: ChatModel) => ({
-          value: model.id,
-          label: `${model.name} · ${model.provider}`,
-        }));
-
-        setModelOptions(options);
-        setSelectedModel(options[0].value);
+        const opts = models.map((m: ChatModel) => ({ value: m.id, label: `${m.name} · ${m.provider}` }));
+        setModelOptions(opts);
+        setSelectedModel(opts[0].value);
       } catch (error) {
-        console.error('Failed to load chat models', error);
         toast({
           title: 'Unable to fetch models',
           description: error instanceof Error ? error.message : 'Try again later.',
           variant: 'destructive',
         });
       } finally {
-        if (isMounted) {
-          setModelsLoading(false);
-        }
+        if (isMounted) setModelsLoading(false);
       }
-    };
-
-    loadModels();
-    return () => {
-      isMounted = false;
-    };
+    })();
+    return () => { isMounted = false; };
   }, [token]);
 
   useEffect(() => {
     if (!token) return;
     let isMounted = true;
-
-    const loadHistory = async () => {
-      setHistoryLoading(true);
+    (async () => {
       try {
-        const sessions = await fetchChatSessions(token);
+        const sessions = await fetchChatSessions();
         if (!isMounted) return;
         const mapped = sessions.map(mapSessionToConversation);
         setConversations((prev) => {
-          const existingIds = new Set(prev.map((c) => c.id));
+          const existing = new Set(prev.map((c) => c.id));
           const merged = [...mapped];
-          prev.forEach((conversation) => {
-            if (!existingIds.has(conversation.id)) {
-              merged.push(conversation);
-            }
-          });
+          prev.forEach((c) => { if (!existing.has(c.id)) merged.push(c); });
           return merged;
         });
         if (!hasInitializedHistory.current && mapped.length > 0) {
@@ -245,62 +176,49 @@ const ChatContainer = () => {
           hasInitializedHistory.current = true;
         }
       } catch (error) {
-        console.error('Failed to load chat history', error);
         toast({
           title: 'Unable to load history',
           description: error instanceof Error ? error.message : 'Please try again later.',
           variant: 'destructive',
         });
-      } finally {
-        if (isMounted) {
-          setHistoryLoading(false);
-        }
       }
-    };
-
-    void loadHistory();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [token]);
+    })();
+    return () => { isMounted = false; };
+  }, [token, mapSessionToConversation]);
 
   const createNewConversation = (firstMessage: string): Conversation => {
     const sessionId = generateSessionId();
     const title = firstMessage.slice(0, 30) + (firstMessage.length > 30 ? '...' : '');
-    const newConversation: Conversation = {
-      id: sessionId,
-      sessionId,
-      title,
-      messages: [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
+    const c: Conversation = {
+      id: sessionId, sessionId, title, messages: [], createdAt: new Date(), updatedAt: new Date(),
     };
-    setConversations((prev) => [newConversation, ...prev]);
+    setConversations((prev) => [c, ...prev]);
     setActiveConversationId(sessionId);
-    return newConversation;
+    return c;
   };
 
-  const dismissSensitiveNotice = useCallback((timestamp: number) => {
-    setSensitiveNotices((prev) => prev.filter((notice) => notice.timestamp.getTime() !== timestamp));
+  const dismissNotice = useCallback((id: string) => {
+    setNotices((prev) => prev.filter((n) => n.id !== id));
+    setOverrideReasonByNotice((prev) => {
+      const copy = { ...prev };
+      delete copy[id];
+      return copy;
+    });
   }, []);
 
-  const clearAllSensitiveNotices = useCallback(() => {
-    setSensitiveNotices([]);
+  const clearAllNotices = useCallback(() => {
+    setNotices([]);
+    setOverrideReasonByNotice({});
   }, []);
 
   const handleSendMessage = async (
     content: string,
-    options: { skipNotices?: boolean; overridePII?: boolean } = {},
+    options: { skipNotices?: boolean; overridePII?: boolean; overrideReason?: string } = {},
   ) => {
-    let targetConversation = conversations.find((c) => c.id === activeConversationId) ?? null;
-
-    if (!targetConversation) {
-      targetConversation = createNewConversation(content);
-    }
-
-    const conversationId = targetConversation.id;
-    const sessionId = targetConversation.sessionId ?? targetConversation.id;
+    let target = conversations.find((c) => c.id === activeConversationId) ?? null;
+    if (!target) target = createNewConversation(content);
+    const conversationId = target.id;
+    const sessionId = target.sessionId ?? target.id;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -310,111 +228,98 @@ const ChatContainer = () => {
     };
 
     setConversations((prev) =>
-      prev.map((c) =>
-        c.id === conversationId
-          ? { ...c, messages: [...c.messages, userMessage], updatedAt: new Date() }
-          : c
-      )
+      prev.map((c) => c.id === conversationId
+        ? { ...c, messages: [...c.messages, userMessage], updatedAt: new Date() }
+        : c),
     );
 
     if (!options.skipNotices) {
       setChatInputValue('');
-      setSensitiveNotices([]);
+      setNotices([]);
+      setOverrideReasonByNotice({});
     }
     setIsTyping(true);
 
-    let assistantContent: string | null = null;
-    let blockedDueToSensitive = false;
-
     try {
-      assistantContent = await fetchChatResponse(
-        {
-          modelId: selectedModel,
-          message: content,
-          sessionId,
-          overridePII: options.overridePII ?? false,
-        },
-        token,
-      );
-    } catch (error) {
-      console.log('Caught error:', error);
-      console.log('Error type:', typeof error);
-      console.log('Is SensitiveDataBlockedError?', error instanceof SensitiveDataBlockedError);
+      const result = await fetchChatResponse({
+        modelId: selectedModel,
+        message: content,
+        sessionId,
+        overridePII: options.overridePII ?? false,
+        overrideReason: options.overrideReason,
+      });
 
-      if (error instanceof SensitiveDataBlockedError) {
-        console.log('Processing SensitiveDataBlockedError, setting notices...');
-        blockedDueToSensitive = true;
-        setConversations((prev) =>
-          prev.map((c) =>
-            c.id === conversationId
-              ? {
-                ...c,
-                messages: c.messages.filter((message) => message.id !== userMessage.id),
-                updatedAt: new Date(),
-              }
-              : c,
-          ),
-        );
-
-        if (!options.skipNotices && !options.overridePII) {
-          console.log('Adding sensitive notice to state...');
-          setSensitiveNotices((prev) => {
-            const action = normalizeNoticeAction(error.details?.action);
-            const notice: SensitiveDataNotice = {
-              message: error.message || 'Sensitive data found in message.',
-              details: error.details,
-              userMessage: content,
-              timestamp: new Date(),
-              action,
-            };
-            console.log('New notice:', notice);
-            if (action === 'ALLOW') {
-              return prev;
-            }
-            return [notice, ...prev].slice(0, 3);
-          });
-          setChatInputValue(content);
-          setTimeout(() => {
-            chatInputRef.current?.focus();
-          }, 0);
-        }
-        console.warn('Sensitive data blocked', error);
-        assistantContent = null;
-      } else {
-        console.error('Failed to fetch chat response', error);
-        assistantContent =
-          "I'm having trouble reaching the Kotwal API right now, but we can keep chatting if you'd like!";
-        toast({
-          title: 'Unable to reach Kotwal',
-          description: error instanceof Error ? error.message : 'Unknown error occurred.',
-          variant: 'destructive',
-        });
-      }
-    }
-
-    if (assistantContent !== null) {
-      await new Promise((resolve) => setTimeout(resolve, 400));
-
+      await new Promise((r) => setTimeout(r, 200));
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: assistantContent,
+        content: result.content,
         timestamp: new Date(),
       };
-
       setConversations((prev) =>
-        prev.map((c) =>
-          c.id === conversationId
-            ? { ...c, messages: [...c.messages, assistantMessage], updatedAt: new Date() }
-            : c
-        )
+        prev.map((c) => c.id === conversationId
+          ? { ...c, messages: [...c.messages, assistantMessage], updatedAt: new Date() }
+          : c),
       );
-    } else if (blockedDueToSensitive) {
+    } catch (error) {
+      if (error instanceof SensitiveDataInterceptError) {
+        // Roll the user's prompt back out of the visible thread; show notice instead.
+        setConversations((prev) =>
+          prev.map((c) => c.id === conversationId
+            ? { ...c, messages: c.messages.filter((m) => m.id !== userMessage.id), updatedAt: new Date() }
+            : c),
+        );
+        if (!options.skipNotices) {
+          const noticeId = `${Date.now()}`;
+          setNotices((prev) => [{
+            id: noticeId,
+            userMessage: content,
+            details: error.details,
+            timestamp: new Date(),
+          }, ...prev].slice(0, 3));
+          setChatInputValue(content);
+          setTimeout(() => chatInputRef.current?.focus(), 0);
+        }
+      } else {
+        const fallback =
+          "I'm having trouble reaching the Kotwal API right now. Please try again in a moment.";
+        setConversations((prev) =>
+          prev.map((c) => c.id === conversationId
+            ? { ...c, messages: [...c.messages, {
+                id: (Date.now() + 1).toString(),
+                role: 'assistant',
+                content: fallback,
+                timestamp: new Date(),
+              } as Message], updatedAt: new Date() }
+            : c),
+        );
+        toast({
+          title: 'Unable to reach Kotwal',
+          description: error instanceof Error ? error.message : 'Unknown error.',
+          variant: 'destructive',
+        });
+      }
+    } finally {
       setIsTyping(false);
+    }
+  };
+
+  const handleProceedAnyway = async (notice: DetectionNotice) => {
+    const reason = (overrideReasonByNotice[notice.id] || '').trim();
+    if (notice.details.requireOverrideReason && !reason) {
+      toast({
+        title: 'Reason required',
+        description: 'Please describe why this prompt is safe to send before proceeding.',
+        variant: 'destructive',
+      });
       return;
     }
-
-    setIsTyping(false);
+    dismissNotice(notice.id);
+    await handleSendMessage(notice.userMessage, {
+      skipNotices: true,
+      overridePII: true,
+      overrideReason: reason || undefined,
+    });
   };
 
   const hydrateConversation = useCallback(
@@ -422,7 +327,7 @@ const ChatContainer = () => {
       if (!token) return;
       setLoadingSessionId(sessionId);
       try {
-        const session = await fetchChatSession(sessionId, token);
+        const session = await fetchChatSession(sessionId);
         if (!session) {
           toast({
             title: 'Session unavailable',
@@ -431,24 +336,22 @@ const ChatContainer = () => {
           });
           return;
         }
-
         const hydrated = mapSessionToConversation(session);
         setConversations((prev) => {
           const others = prev.filter((c) => c.id !== hydrated.id);
           return [hydrated, ...others];
         });
       } catch (error) {
-        console.error('Failed to load chat session', error);
         toast({
           title: 'Unable to load chat',
           description: error instanceof Error ? error.message : 'Please try again later.',
           variant: 'destructive',
         });
       } finally {
-        setLoadingSessionId((current) => (current === sessionId ? null : current));
+        setLoadingSessionId((cur) => (cur === sessionId ? null : cur));
       }
     },
-    [mapSessionToConversation, toast, token],
+    [mapSessionToConversation, token],
   );
 
   const handleNewChat = () => {
@@ -459,11 +362,8 @@ const ChatContainer = () => {
   const handleSelectConversation = (id: string) => {
     setActiveConversationId(id);
     setSidebarOpen(false);
-
-    const existingConversation = conversations.find((c) => c.id === id);
-    if (!existingConversation || existingConversation.messages.length === 0) {
-      void hydrateConversation(id);
-    }
+    const existing = conversations.find((c) => c.id === id);
+    if (!existing || existing.messages.length === 0) void hydrateConversation(id);
   };
 
   const hasMessages = Boolean(activeConversation && activeConversation.messages.length);
@@ -478,19 +378,16 @@ const ChatContainer = () => {
         loadingSessionId={loadingSessionId}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
-        onOpenDashboard={() => {
-          setSidebarOpen(false);
-          navigate('/dashboard');
-        }}
+        onOpenDashboard={() => { setSidebarOpen(false); navigate('/dashboard'); }}
         userEmail={user?.email}
-        onLogout={() => {
+        onLogout={async () => {
           setSidebarOpen(false);
-          logout();
+          await logout();
           navigate('/login');
         }}
       />
       <main className="flex-1 flex flex-col min-w-0 bg-gradient-to-b from-white via-white to-slate-50/60">
-        {/* Messages Area */}
+        {/* Messages */}
         <div className="flex-1 overflow-y-auto px-3 sm:px-6 lg:px-10">
           <div className="pb-32 pt-10">
             <div className="max-w-3xl mx-auto px-4">
@@ -503,42 +400,20 @@ const ChatContainer = () => {
                       key={message.id}
                       message={message}
                       isTyping={
-                        isTyping &&
-                        message.role === 'assistant' &&
+                        isTyping && message.role === 'assistant' &&
                         index === (activeConversation?.messages.length ?? 0) - 1
                       }
                     />
                   ))}
-                  {isTyping && activeConversation?.messages[activeConversation.messages.length - 1]?.role === 'user' && (
-                    <div className="flex w-full gap-4 pt-2 fade-in">
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
-                        <svg
-                          width="24"
-                          height="24"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="text-foreground"
-                        >
-                          <path
-                            d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.8956zm16.5963 3.8558L13.1038 8.364l2.0201-1.1638a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.4066-.6813zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6099-1.4997z"
-                            fill="currentColor"
-                          />
-                        </svg>
-                      </div>
-                      <div className="flex items-center gap-1 h-8">
-                        <div className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" />
-                        <div className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse" style={{ animationDelay: '0.2s' }} />
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
               <div ref={messagesEndRef} />
             </div>
           </div>
         </div>
-        {sensitiveNotices.length > 0 && (
+
+        {/* Detection notices */}
+        {notices.length > 0 && (
           <div className="border-t border-amber-200 bg-amber-50/95 px-4 py-6 shadow-inner">
             <div className="mx-auto max-w-3xl space-y-4">
               <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
@@ -547,16 +422,18 @@ const ChatContainer = () => {
                     <ShieldAlert className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-amber-900">Sensitive prompt blocked</p>
+                    <p className="text-sm font-semibold text-amber-900">
+                      Sensitive content detected
+                    </p>
                     <p className="text-xs text-amber-800">
-                      Remove personal information from your last prompt before retrying or proceed at your own risk.
+                      Kotwal stopped your prompt before it left your network. Review the explanation below.
                     </p>
                   </div>
                 </div>
-                {sensitiveNotices.length > 1 && (
+                {notices.length > 1 && (
                   <button
                     type="button"
-                    onClick={clearAllSensitiveNotices}
+                    onClick={clearAllNotices}
                     className="text-xs font-medium text-amber-800 underline-offset-4 hover:underline"
                   >
                     Dismiss all
@@ -564,90 +441,160 @@ const ChatContainer = () => {
                 )}
               </div>
               <div className="space-y-4">
-                {sensitiveNotices.map((notice) => {
-                  const action = normalizeNoticeAction(notice.action);
+                {notices.map((notice) => {
+                  const d = notice.details;
+                  const action = d.action;
                   const isBlock = action === 'BLOCK';
-                  const isWarn = action === 'WARN' || action === '';
-                  const cardBorder = isBlock ? 'border-red-200 bg-red-50 text-red-900' : 'border-amber-200 bg-white/90 text-amber-900';
-                  const badgeColor = isBlock ? 'text-red-600' : 'text-amber-600';
-                  const promptBg = isBlock ? 'bg-red-100/60 text-red-900' : 'bg-amber-100/60 text-amber-900';
+                  const isWarn = action === 'WARN';
+                  const canOverride = !!d.canOverride && isWarn;
+                  const requireReason = !!d.requireOverrideReason;
+                  const scorePct = formatScore(d.score);
+                  const cardCls = isBlock
+                    ? 'border-red-200 bg-red-50 text-red-900'
+                    : 'border-amber-200 bg-white/90 text-amber-900';
+                  const accent = isBlock ? 'text-red-600' : 'text-amber-600';
+                  const promptBg = isBlock
+                    ? 'bg-red-100/60 text-red-900'
+                    : 'bg-amber-100/60 text-amber-900';
 
                   return (
-                    <div
-                      key={notice.timestamp.getTime()}
-                      className={`rounded-2xl border p-4 text-sm shadow ${cardBorder}`}
-                    >
+                    <div key={notice.id} className={`rounded-2xl border p-4 text-sm shadow ${cardCls}`}>
+                      {/* Header: action + score + dismiss */}
                       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                        <div>
-                          <p className="text-sm font-semibold">Detected Sensitive Data</p>
-                          {action && (
-                            <p className={`text-xs font-semibold ${badgeColor}`}>
-                              Action: {action}
-                            </p>
+                        <div className="flex items-center gap-2">
+                          {isBlock
+                            ? <ShieldAlert className={`h-4 w-4 ${accent}`} />
+                            : <ShieldCheck className={`h-4 w-4 ${accent}`} />}
+                          <span className="text-sm font-semibold">{action}</span>
+                          {scorePct !== null && (
+                            <span className={`text-xs font-semibold ${accent}`}>
+                              · risk {scorePct}/100
+                            </span>
+                          )}
+                          {d.policyVersion && (
+                            <span className="text-[11px] text-gray-500">policy {d.policyVersion}</span>
                           )}
                         </div>
-                        <p className="text-xs font-medium">
-                          {isBlock
-                            ? 'This prompt is blocked. Remove sensitive data before continuing.'
-                            : 'Resolve or continue using the options below.'}
-                        </p>
+                        <button
+                          type="button"
+                          onClick={() => dismissNotice(notice.id)}
+                          className="text-xs font-medium text-gray-500 underline-offset-4 hover:underline"
+                        >
+                          Dismiss
+                        </button>
                       </div>
+
+                      {/* Categories present */}
+                      {d.categoriesPresent && d.categoriesPresent.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {d.categoriesPresent.map((cat) => (
+                            <span
+                              key={cat}
+                              className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${isBlock ? 'border-red-200 bg-red-100/70' : 'border-amber-200 bg-amber-100/70'}`}
+                            >
+                              {cat.replace(/_/g, ' ').toLowerCase()}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Prompt preview */}
                       <div className="mt-3">
-                        <p className={`text-[11px] font-semibold uppercase tracking-wide ${badgeColor}`}>
-                          Blocked prompt
+                        <p className={`text-[11px] font-semibold uppercase tracking-wide ${accent}`}>
+                          Your prompt
                         </p>
-                        <div className={`mt-1 rounded-xl ${promptBg} p-3 font-mono text-xs leading-relaxed`}>
+                        <div className={`mt-1 max-h-32 overflow-auto rounded-xl ${promptBg} p-3 font-mono text-xs leading-relaxed`}>
                           {notice.userMessage}
                         </div>
                       </div>
-                      {notice.details?.findings?.length ? (
-                        <div className={`mt-3 rounded-xl border ${isBlock ? 'border-red-100 bg-red-50/60' : 'border-amber-100 bg-amber-50/70'} p-3`}>
-                          <ul className="mt-1 grid gap-2 sm:grid-cols-2">
-                            {notice.details.findings.map((finding, index) => (
-                              <li
-                                key={`${finding.type ?? 'pii'}-${index}`}
-                                className="rounded-lg bg-white/80 p-2 text-xs text-gray-800"
-                              >
-                                {finding.label ?? finding.type ?? 'Sensitive data'}
+
+                      {/* Findings */}
+                      {d.findings && d.findings.length > 0 && (
+                        <div className={`mt-3 rounded-xl border p-3 ${isBlock ? 'border-red-100 bg-red-50/60' : 'border-amber-100 bg-amber-50/70'}`}>
+                          <p className={`mb-2 text-[11px] font-semibold uppercase tracking-wide ${accent}`}>
+                            What we found
+                          </p>
+                          <ul className="grid gap-2 sm:grid-cols-2">
+                            {d.findings.map((f, i) => (
+                              <li key={`${f.subtype || f.category}-${i}`} className="rounded-lg bg-white/80 p-2 text-xs">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-semibold">{formatFindingLabel(f)}</span>
+                                  {typeof f.confidence === 'number' && (
+                                    <span className="text-[10px] text-gray-500">
+                                      {Math.round(f.confidence * 100)}% conf
+                                    </span>
+                                  )}
+                                </div>
+                                {f.value && (
+                                  <div className="mt-1 font-mono text-[11px] text-gray-700">{f.value}</div>
+                                )}
                               </li>
                             ))}
                           </ul>
                         </div>
-                      ) : null}
-                      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <p className={`text-[11px] sm:max-w-xs ${isBlock ? 'text-red-700' : 'text-amber-700'}`}>
-                          {isBlock
-                            ? 'Only editing is allowed. Proceed override is disabled for BLOCK actions.'
-                            : 'Only continue if you accept the risk. Proceeding will be logged for compliance review.'}
-                        </p>
-                        <div className="flex items-center gap-2">
+                      )}
+
+                      {/* Decision reasons */}
+                      {d.decisionReasons && d.decisionReasons.length > 0 && (
+                        <details className="mt-3 text-xs">
+                          <summary className="cursor-pointer font-semibold">Why this decision?</summary>
+                          <ul className="mt-2 list-disc space-y-1 pl-5 text-gray-700">
+                            {d.decisionReasons.map((r, i) => (
+                              <li key={i}>{r}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+
+                      {/* Override flow (WARN only) */}
+                      {canOverride && (
+                        <div className="mt-4 rounded-xl border border-amber-200 bg-white p-3">
+                          <label className="block text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                            Reason for override {requireReason && <span className="text-red-600">*</span>}
+                          </label>
+                          <p className="mt-0.5 text-[11px] text-gray-600">
+                            This is logged to your tenant's audit trail. Be specific — e.g. "Test data, not real PII".
+                          </p>
+                          <textarea
+                            value={overrideReasonByNotice[notice.id] || ''}
+                            onChange={(e) => setOverrideReasonByNotice((prev) => ({ ...prev, [notice.id]: e.target.value }))}
+                            placeholder="Explain why this prompt is safe to send"
+                            className="mt-2 w-full rounded-lg border border-amber-200 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-amber-400 focus:outline-none"
+                            rows={2}
+                            maxLength={500}
+                          />
+                        </div>
+                      )}
+
+                      {/* Action buttons */}
+                      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setChatInputValue(notice.userMessage);
+                            setTimeout(() => chatInputRef.current?.focus(), 0);
+                          }}
+                          className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${isBlock ? 'border-red-300 text-red-800 hover:bg-red-100' : 'border-amber-300 text-amber-800 hover:bg-amber-100'}`}
+                        >
+                          Edit prompt
+                        </button>
+                        {canOverride && (
                           <button
                             type="button"
-                            onClick={() => {
-                              setChatInputValue(notice.userMessage);
-                              setTimeout(() => chatInputRef.current?.focus(), 0);
-                            }}
-                            className={`rounded-lg border px-3 py-1 text-xs font-semibold ${isBlock ? 'border-red-300 text-red-800 hover:bg-red-100' : 'border-amber-300 text-amber-800 hover:bg-amber-100'}`}
+                            onClick={() => handleProceedAnyway(notice)}
+                            className="inline-flex items-center justify-center rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white shadow hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={requireReason && !(overrideReasonByNotice[notice.id] || '').trim()}
                           >
-                            Edit prompt
+                            Send with override
                           </button>
-                          {isWarn && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                dismissSensitiveNotice(notice.timestamp.getTime());
-                                await handleSendMessage(notice.userMessage, {
-                                  skipNotices: true,
-                                  overridePII: true,
-                                });
-                              }}
-                              className="inline-flex items-center justify-center rounded-lg bg-amber-600 px-3 py-1 text-xs font-semibold text-white shadow hover:bg-amber-700"
-                            >
-                              Proceed anyway
-                            </button>
-                          )}
-                        </div>
+                        )}
                       </div>
+
+                      {isBlock && (
+                        <p className="mt-3 text-[11px] text-red-700">
+                          This prompt cannot be overridden. Edit it to remove the highlighted entities and try again.
+                        </p>
+                      )}
                     </div>
                   );
                 })}
@@ -656,7 +603,7 @@ const ChatContainer = () => {
           </div>
         )}
 
-        {/* Input Area */}
+        {/* Input */}
         <div className="sticky bottom-0 border-t border-white/70 bg-gradient-to-t from-white via-white to-white/60 px-3 pb-2 pt-4 sm:px-6">
           <ChatInput
             onSend={handleSendMessage}

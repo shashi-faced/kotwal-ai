@@ -1,149 +1,203 @@
-import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from 'react';
 import { API_URLS } from '@/lib/url';
-import { clearAuthState, loadAuthState, persistAuthState } from '@/lib/authStorage';
-import { handleUnauthorized } from '@/lib/session';
+import { apiFetch, apiJson, ApiError, setUnauthorizedHandler } from '@/lib/apiClient';
+import { tokenStore } from '@/lib/tokenStore';
+import { cacheUser, clearCachedUser, loadCachedUser, CachedUser } from '@/lib/authStorage';
 import { showErrorToast, showSuccessToast } from '@/lib/toast';
 
 interface AuthUser {
   email: string;
   role?: string;
+  name?: string;
 }
 
 interface AuthContextValue {
   isAuthenticated: boolean;
   user: AuthUser | null;
   loading: boolean;
+  /** Plain access token for legacy services that haven't been migrated to apiFetch yet. */
   token: string | null;
+  hasRole: (...roles: string[]) => boolean;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
+}
+
+interface LoginResponse {
+  accessToken: string;
+  accessTokenTtl?: string;
+  user?: { email: string; name?: string; role?: string };
+}
+
+interface MeResponse {
+  role?: string;
+  permissions?: string[];
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-const fetchUserRole = async (token: string): Promise<string | null> => {
-  try {
-    const response = await fetch(API_URLS.user.role, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    if (response.status === 401) {
-      handleUnauthorized();
-      return null;
-    }
-
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({}));
-      const message = errorBody?.message || 'Failed to fetch user role';
-      console.error('Failed to fetch user role', errorBody);
-      showErrorToast('Unable to fetch role', message);
-      return null;
-    }
-
-    const data = (await response.json().catch(() => null)) as { role?: string } | null;
-    return data?.role ?? null;
-  } catch (error) {
-    console.error('Failed to fetch user role', error);
-    const description = error instanceof Error ? error.message : 'Unable to fetch user role.';
-    showErrorToast('Unable to fetch role', description);
-    return null;
-  }
+const parseTtlSeconds = (ttl?: string): number | undefined => {
+  if (!ttl) return undefined;
+  const m = /^(\d+)\s*(s|m|h|d)?$/i.exec(ttl.trim());
+  if (!m) return undefined;
+  const n = Number(m[1]);
+  const unit = (m[2] || 's').toLowerCase();
+  const mult = unit === 'm' ? 60 : unit === 'h' ? 3600 : unit === 'd' ? 86400 : 1;
+  return n * mult;
 };
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const initialUser = loadCachedUser();
+  const [user, setUser] = useState<AuthUser | null>(initialUser);
   const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const bootstrapRan = useRef(false);
 
+  // Mirror tokenStore -> React state so consumers re-render.
   useEffect(() => {
-    const stored = loadAuthState();
-    if (stored) {
-      setIsAuthenticated(!!stored.isAuthenticated);
-      setUser(stored.email ? { email: stored.email, role: stored.role } : null);
-      setToken(stored.token ?? null);
-    }
-    setLoading(false);
+    setToken(tokenStore.get());
+    return tokenStore.subscribe((t) => setToken(t));
   }, []);
 
+  // Hard-401 handler: clear and bounce to /login.
   useEffect(() => {
-    if (loading) return;
-    if (isAuthenticated && user && token) {
-      persistAuthState({ isAuthenticated: true, email: user.email, role: user.role, token });
-    } else {
-      clearAuthState();
-    }
-  }, [isAuthenticated, user, token, loading]);
+    setUnauthorizedHandler(() => {
+      tokenStore.clear();
+      clearCachedUser();
+      setUser(null);
+      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        window.location.replace('/login');
+      }
+    });
+  }, []);
 
-  const login = async (email: string, password: string) => {
-    if (!email || !password) {
-      throw new Error('Email and password are required.');
-    }
-
+  const hydrateMe = useCallback(async (fallback?: CachedUser) => {
     try {
-      const response = await fetch(API_URLS.auth.login, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      if (response.status === 401) {
-        const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody?.message || 'Invalid email or password.');
-      }
-
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody?.message || 'API request failed');
-      }
-
-      const data = (await response.json().catch(() => null)) as { token?: string } | null;
-      if (!data?.token) {
-        throw new Error('Login API did not return a token.');
-      }
-
-      const userRole = await fetchUserRole(data.token);
-
-      setIsAuthenticated(true);
-      setUser({ email, role: userRole ?? undefined });
-      setToken(data.token);
-    } catch (error) {
-      const description = error instanceof Error ? error.message : 'Unable to login. Please try again.';
-      showErrorToast('Login failed', description);
-      throw error instanceof Error ? error : new Error(description);
+      const me = await apiJson<MeResponse>(API_URLS.auth.me, { method: 'GET' });
+      const merged: AuthUser = {
+        email: fallback?.email || '',
+        name: fallback?.name,
+        role: me?.role || fallback?.role,
+      };
+      setUser(merged);
+      cacheUser(merged);
+      return merged;
+    } catch {
+      return null;
     }
-  };
+  }, []);
 
-  const logout = () => {
-    setIsAuthenticated(false);
+  // Bootstrap on first mount: try /api/auth/refresh (uses httpOnly cookie).
+  useEffect(() => {
+    if (bootstrapRan.current) return;
+    bootstrapRan.current = true;
+
+    (async () => {
+      try {
+        const res = await fetch(API_URLS.auth.refresh, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (res.ok) {
+          const body = (await res.json()) as { accessToken: string; accessTokenTtl?: string };
+          tokenStore.set(body.accessToken, parseTtlSeconds(body.accessTokenTtl));
+          await hydrateMe(initialUser ?? undefined);
+        } else {
+          // No refresh cookie / expired family — definitely logged out.
+          clearCachedUser();
+          setUser(null);
+        }
+      } catch {
+        clearCachedUser();
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const login = useCallback(
+    async (email: string, password: string) => {
+      if (!email || !password) {
+        throw new Error('Email and password are required.');
+      }
+
+      try {
+        const data = await apiJson<LoginResponse>(API_URLS.auth.login, {
+          method: 'POST',
+          body: { email, password },
+          skipAuth: true,
+        });
+
+        if (!data.accessToken) {
+          throw new Error('Login API did not return a token.');
+        }
+
+        tokenStore.set(data.accessToken, parseTtlSeconds(data.accessTokenTtl));
+        const merged: AuthUser = {
+          email: data.user?.email || email,
+          name: data.user?.name,
+          role: data.user?.role,
+        };
+        setUser(merged);
+        cacheUser(merged);
+
+        // Best-effort role/perm refresh in case server cached stale role on token.
+        void hydrateMe(merged);
+      } catch (error) {
+        const description =
+          error instanceof ApiError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : 'Unable to login. Please try again.';
+        showErrorToast('Login failed', description);
+        throw error instanceof Error ? error : new Error(description);
+      }
+    },
+    [hydrateMe],
+  );
+
+  const logout = useCallback(async () => {
+    try {
+      // Server revokes the family + clears the cookie.
+      await apiFetch(API_URLS.auth.logout, { method: 'POST', skipAuth: true, silentUnauthorized: true });
+    } catch {
+      /* network errors during logout are non-fatal */
+    }
+    tokenStore.clear();
+    clearCachedUser();
     setUser(null);
-    setToken(null);
-    clearAuthState();
     showSuccessToast('Logged out', 'You have been signed out of Kotwal.');
-  };
+  }, []);
 
-  const value = useMemo(
+  const hasRole = useCallback(
+    (...roles: string[]) => {
+      if (!user?.role) return false;
+      return roles.includes(user.role);
+    },
+    [user],
+  );
+
+  const value = useMemo<AuthContextValue>(
     () => ({
-      isAuthenticated,
+      isAuthenticated: !!token,
       user,
       loading,
       token,
+      hasRole,
       login,
       logout,
     }),
-    [isAuthenticated, user, loading, token],
+    [token, user, loading, hasRole, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within an AuthProvider');
+  return ctx;
 };
