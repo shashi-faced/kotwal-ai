@@ -40,7 +40,7 @@ export const API_URLS = {
   billing: {
     records: withBase('/api/billing'),
     aggregate: withBase('/api/billing/aggregate'),
-    aggregateMonthly: withBase('/api/billing/aggregate-monthly'),
+    aggregateMonthly: withBase('/api/billing/aggregate/monthly'),
   },
   policy: {
     base: withBase('/api/policy'),

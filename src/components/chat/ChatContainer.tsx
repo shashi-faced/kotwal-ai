@@ -43,11 +43,7 @@ const generateSessionId = () => {
   );
 };
 
-const FALLBACK_MODELS: { value: string; label: string }[] = [
-  { value: 'fallback-mini', label: 'Kotwal Mini · Fast' },
-  { value: 'fallback-pro', label: 'Kotwal Pro · Balanced' },
-  { value: 'fallback-ultra', label: 'Kotwal Ultra · Detailed' },
-];
+const EMPTY_MODELS: { value: string; label: string }[] = [];
 
 interface DetectionNotice {
   id: string;
@@ -97,9 +93,9 @@ const ChatContainer = () => {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [modelOptions, setModelOptions] = useState(FALLBACK_MODELS);
-  const [modelsLoading, setModelsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(FALLBACK_MODELS[0].value);
+  const [modelOptions, setModelOptions] = useState(EMPTY_MODELS);
+  const [modelsLoading, setModelsLoading] = useState(true);
+  const [selectedModel, setSelectedModel] = useState('');
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
   const [notices, setNotices] = useState<DetectionNotice[]>([]);
   const [overrideReasonByNotice, setOverrideReasonByNotice] = useState<Record<string, string>>({});

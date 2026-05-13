@@ -1,10 +1,20 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useAuth } from '@/context/AuthContext';
-import { DashboardUser, deleteAdminUser, fetchDashboardUsers } from '@/services/adminApi';
-import { Pencil, Trash2 } from 'lucide-react';
+import { DashboardUser, deleteAdminUser, fetchDashboardUsers, adminChangePassword } from '@/services/adminApi';
+import { Pencil, Trash2, KeyRound } from 'lucide-react';
 import { showErrorToast, showSuccessToast } from '@/lib/toast';
 
 interface ManageUsersSectionProps {
@@ -20,6 +30,9 @@ const ManageUsersSection = ({ onEditUser, onAddUser }: ManageUsersSectionProps) 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingEmail, setDeletingEmail] = useState<string | null>(null);
+  const [changePwEmail, setChangePwEmail] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [changePwLoading, setChangePwLoading] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -42,6 +55,7 @@ const ManageUsersSection = ({ onEditUser, onAddUser }: ManageUsersSectionProps) 
   }, [token]);
 
   return (
+    <>
     <Card className="bg-card/80">
       <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
@@ -102,6 +116,18 @@ const ManageUsersSection = ({ onEditUser, onAddUser }: ManageUsersSectionProps) 
                       <Button
                         variant="ghost"
                         size="sm"
+                        onClick={() => {
+                          setChangePwEmail(user.email);
+                          setNewPassword('');
+                        }}
+                        className="inline-flex items-center gap-2"
+                      >
+                        <KeyRound className="w-4 h-4" />
+                        <span className="hidden sm:inline">Password</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={async () => {
                           if (!token) return;
                           const confirmed = window.confirm(
@@ -139,6 +165,56 @@ const ManageUsersSection = ({ onEditUser, onAddUser }: ManageUsersSectionProps) 
         </Table>
       </CardContent>
     </Card>
+
+    {/* Change Password Dialog */}
+    <Dialog open={!!changePwEmail} onOpenChange={(open) => { if (!open) setChangePwEmail(null); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Change Password</DialogTitle>
+          <DialogDescription>
+            Set a new password for <span className="font-semibold">{changePwEmail}</span>
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label htmlFor="new-password">New Password</Label>
+            <Input
+              id="new-password"
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Enter new password"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setChangePwEmail(null)} disabled={changePwLoading}>
+            Cancel
+          </Button>
+          <Button
+            onClick={async () => {
+              if (!changePwEmail || !newPassword.trim()) return;
+              setChangePwLoading(true);
+              try {
+                const result = await adminChangePassword({ email: changePwEmail, newPassword: newPassword.trim() });
+                showSuccessToast('Password changed', result.message);
+                setChangePwEmail(null);
+                setNewPassword('');
+              } catch (err) {
+                const message = err instanceof Error ? err.message : 'Unable to change password.';
+                showErrorToast('Change password failed', message);
+              } finally {
+                setChangePwLoading(false);
+              }
+            }}
+            disabled={changePwLoading || !newPassword.trim()}
+          >
+            {changePwLoading ? 'Changing…' : 'Change Password'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 };
 

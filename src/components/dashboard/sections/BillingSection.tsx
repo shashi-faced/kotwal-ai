@@ -60,8 +60,8 @@ const BillingSection = () => {
           fetchBillingAggregateMonthly(token),
           fetchBillingAggregate(
             {
-              from: sevenDaysAgo.toISOString(),
-              to: now.toISOString(),
+              periodStart: sevenDaysAgo.toISOString(),
+              periodEnd: now.toISOString(),
             },
             token,
           ),

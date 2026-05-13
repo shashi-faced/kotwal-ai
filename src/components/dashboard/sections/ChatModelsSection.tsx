@@ -81,7 +81,7 @@ const ChatModelsSection = () => {
         <div>
           <CardTitle>Chat Models</CardTitle>
           <CardDescription>
-            Toggle availability for your tenant. Disabled models are hidden from end users.
+            Models assigned by Kotwal. Toggle availability for your tenant's users.
           </CardDescription>
           {summary && (
             <div className="mt-2 flex flex-wrap gap-2 text-xs">

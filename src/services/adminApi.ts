@@ -121,6 +121,13 @@ export interface UpdateAdminUserPayload {
 export interface UpdateAdminUserResponse { message: string; }
 export interface DeleteAdminUserResponse { message: string; }
 
+export interface AdminChangePasswordPayload {
+  email: string;
+  newPassword: string;
+}
+
+export interface AdminChangePasswordResponse { message: string; }
+
 const okOrEmptyArray = async <T>(p: Promise<T[]>): Promise<T[]> => {
   try { return await p; } catch (err) {
     if (err instanceof ApiError && err.status === 401) return [];
@@ -271,4 +278,15 @@ export const deleteAdminUser = async (
   }
   const data = (await res.json().catch(() => ({}))) as DeleteAdminUserResponse | Record<string, never>;
   return { message: (data as DeleteAdminUserResponse).message ?? 'User deleted successfully.' };
+};
+
+export const adminChangePassword = async (
+  payload: AdminChangePasswordPayload,
+  _authToken?: string,
+): Promise<AdminChangePasswordResponse> => {
+  void _authToken;
+  const data = await apiJson<AdminChangePasswordResponse | Record<string, never>>(
+    API_URLS.admin.changePassword, { method: 'POST', body: payload },
+  );
+  return { message: (data as AdminChangePasswordResponse).message ?? 'Password changed successfully.' };
 };

@@ -23,8 +23,8 @@ export interface BillingRecord {
 }
 
 export interface BillingAggregatePayload {
-  from: string;
-  to: string;
+  periodStart: string;
+  periodEnd: string;
 }
 
 export interface BillingAggregate {
